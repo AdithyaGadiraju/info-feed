@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
-import { closeDb, db, dashboardUrl, isProjectPausedError } from './client.js';
+import { closeDb, db, dashboardUrl, isProjectPausedError } from './client';
 
 const here = dirname(fileURLToPath(import.meta.url));
 

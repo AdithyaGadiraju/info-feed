@@ -10,8 +10,8 @@
  * `TweetFilter` object (with `minLikes`) rather than a raw query string. This file
  * is written against the v4.2.0 surface actually present in node_modules.
  */
-import type { RawItem, Source, SourceCtx, TwitterListSpec, TwitterQuerySpec } from './types.js';
-import { env } from '../env.js';
+import type { RawItem, Source, SourceCtx, TwitterListSpec, TwitterQuerySpec } from './types';
+import { env } from '../env';
 
 /** ADR 0002: request volume is what gets the throwaway account locked. */
 const MAX_REQUESTS_PER_RUN = 10;

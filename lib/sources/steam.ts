@@ -13,7 +13,7 @@
  *     original_price: number, final_price: number, currency: string, ... }
  * Prices are in the smallest currency unit (cents for AUD) with no decimal point.
  */
-import type { RawItem, Source, SourceCtx } from './types.js';
+import type { RawItem, Source, SourceCtx } from './types';
 
 const ENDPOINT = 'https://store.steampowered.com/api/featuredcategories?cc=au&l=english';
 

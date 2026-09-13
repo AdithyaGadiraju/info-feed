@@ -73,6 +73,13 @@ from Gadi's Mac, on a residential connection, not a datacenter IP.
   for the VPS; it is already true from a home connection. The fix is the `.rss`
   endpoint (`/r/<sub>/hot/.rss`), which returns 200 and needs no auth. Registering a
   Reddit script app for OAuth remains the documented follow-up and is unchanged.
+- **The `.rss` endpoint is rate limited hard, and retrying makes it worse.** Measured
+  2026-09-13: after a burst of requests with 429 retries, the address stayed
+  throttled so completely that single requests spaced 25 s apart still returned 429.
+  The backoff also pushed the source past the runner's 20 s budget, so it both
+  deepened the block and returned nothing. The source is now sequential, spaced one
+  second apart, and treats the first 429 as a circuit breaker that abandons the rest
+  of the run. A blocked address now costs about one second instead of sixty.
 - **Consequence: Reddit has no vote counts.** The RSS feed carries no score or
   comment count, so `redditMinUpvotes` cannot be applied. It is replaced by
   `thresholds.redditTopN` (default 10): the source takes the top N of each

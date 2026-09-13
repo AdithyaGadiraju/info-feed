@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { LANES } from '../../lib/db/types.js';
-import { hn, routeFrontPageLane } from '../../lib/sources/hn.js';
-import { sourcesConfig } from '../../config/sources.js';
+import { LANES } from '../../lib/db/types';
+import { hn, routeFrontPageLane } from '../../lib/sources/hn';
+import { sourcesConfig } from '../../config/sources';
 
 // Live endpoint per ADR 0002: these hit the real Algolia HN API.
 describe('hn source (live)', () => {

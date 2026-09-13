@@ -6,8 +6,8 @@
  * own try/catch so a Yahoo break can never take crypto down with it -- that
  * isolation is the explicit point of this module per the ADR.
  */
-import { getPriceAt, insertPriceSnapshots } from '../db/queries.js';
-import type { RawItem, Source, SourceCtx } from './types.js';
+import { getPriceAt, insertPriceSnapshots } from '../db/queries';
+import type { RawItem, Source, SourceCtx } from './types';
 
 interface CoinGeckoEntry {
   usd: number;

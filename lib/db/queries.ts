@@ -6,7 +6,7 @@
  * columns as strings by default and a personal feed will never exceed 2^31 rows.
  */
 import type { Row } from 'postgres';
-import { db } from './client.js';
+import { db } from './client';
 import {
   EXCLUDED_STORY_ID,
   isNewStoryAssignment,
@@ -20,7 +20,7 @@ import {
   type Story,
   type StoryWithCount,
   type StoryWithItems,
-} from './types.js';
+} from './types';
 
 // ---- row mappers ----
 

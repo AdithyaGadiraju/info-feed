@@ -5,8 +5,8 @@
  * throwaway account's key lands in `.env`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import twitter from '../../lib/sources/twitter.js';
-import type { Source, SourceCtx, SourcesConfig } from '../../lib/sources/types.js';
+import twitter from '../../lib/sources/twitter';
+import type { Source, SourceCtx, SourcesConfig } from '../../lib/sources/types';
 
 const baseConfig: SourcesConfig = {
   lanes: ['ai', 'markets', 'betting', 'gamedev', 'games'],

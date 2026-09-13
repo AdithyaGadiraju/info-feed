@@ -3,8 +3,8 @@
  * Gadi edits the feed and subreddit lists as the feed gets tuned. Expect churn here
  * for the first couple of weeks and none in the source modules.
  */
-import { LANES } from '../lib/db/types.js';
-import type { SourcesConfig } from '../lib/sources/types.js';
+import { LANES } from '../lib/db/types';
+import type { SourcesConfig } from '../lib/sources/types';
 
 export const sourcesConfig: SourcesConfig = {
   lanes: LANES,

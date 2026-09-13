@@ -4,8 +4,8 @@
  * touch the network, and even those take an injectable `fetch` so tests never post
  * to Gadi's real channel.
  */
-import { env } from '../env.js';
-import type { Lane, Story } from '../db/types.js';
+import { env } from '../env';
+import type { Lane, Story } from '../db/types';
 
 export interface DiscordEmbed {
   title: string;

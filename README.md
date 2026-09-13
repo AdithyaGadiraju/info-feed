@@ -145,3 +145,65 @@ docs/adr/              why everything is the way it is
 ```
 
 Everything reads and writes through `lib/db/queries.ts`. Nothing else writes SQL.
+
+## Deploying to the VPS
+
+**Nothing has been deployed.** These are the steps for a separate, explicitly approved
+session. Read the blocker first.
+
+### Blocker: the LLM transport
+
+The default `LLM_TRANSPORT=cli` **cannot work on the server**. It shells out to the
+`claude` CLI and relies on an interactive subscription login, which a headless box does
+not have. Before deploying, resolve `TODO.md` T1:
+
+```bash
+LLM_TRANSPORT=api
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Budget roughly US$10–25/month on Sonnet 5 at the default cadence. Until that switch is
+made, deploying gets you ingestion and a feed with no enrichment, which is not the product.
+
+### The box is shared
+
+The VPS already runs unrelated production services. The app must stay inside its own
+directory, run under its own process-manager entry, bind to one port, and never touch
+another service's files, ports or config.
+
+1. **Own directory and own user.**
+   ```bash
+   sudo mkdir -p /opt/info-feed && sudo chown $USER /opt/info-feed
+   git clone <repo> /opt/info-feed && cd /opt/info-feed
+   npm ci
+   ```
+2. **Environment.** Copy `.env.example` to `.env` and fill it in. Set `LLM_TRANSPORT=api`,
+   a real `FEED_PASS`, `FEED_BASE_URL` to the public HTTPS URL, and a `PORT` that nothing
+   else on the box is using. Check first:
+   ```bash
+   ss -tlnp | grep -w <port>     # must print nothing
+   ```
+3. **Schema.** `npm run db:migrate`
+4. **Build.** `npm run build`
+5. **Two process-manager entries**, named so they cannot be confused with the existing
+   services. Whatever the box already uses (systemd or pm2), match it rather than
+   introducing a second supervisor:
+   - `info-feed-web` → `npm run start`, bound to `PORT`, restart on failure.
+   - `info-feed-worker` → `npm run worker`. Optional. Skip it if you would rather trigger
+     `npm run digest` from cron or by hand.
+6. **Reverse proxy.** Add one server block to the box's existing proxy pointing a
+   hostname at `127.0.0.1:$PORT`. Do not change the proxy's other blocks.
+7. **TLS is mandatory.** The feed's only lock is HTTP basic auth, which sends the
+   password in base64 on every request. Over plain HTTP it is not a lock at all. Either
+   terminate TLS at the proxy with a real certificate, or bind the app to `127.0.0.1`
+   and reach it through an SSH tunnel. Never expose it on port 80.
+8. **Verify.** `curl -I https://<host>/` returns 401, and with `-u "$FEED_USER:$FEED_PASS"`
+   returns 200. Then run one `npm run digest -- --since 6` and confirm the Discord post.
+
+### Operating it
+
+`runs` is the whole observability story. To see what happened:
+
+```sql
+select job, started_at, ok, counts, error from runs order by started_at desc limit 20;
+```

@@ -4,7 +4,7 @@
  * emits every fresh item unfiltered and leaves scoring to the enrichment step.
  */
 import Parser from 'rss-parser';
-import type { FeedSpec, RawItem, Source, SourceCtx } from './types.js';
+import type { FeedSpec, RawItem, Source, SourceCtx } from './types';
 
 // A plain UA string, because some publishers (Cloudflare-fronted blogs especially)
 // 403 the default Node/undici UA on RSS endpoints.

@@ -4,7 +4,7 @@
  * ever leaves the process. No live Discord traffic from this file, ever.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { Story } from '../../lib/db/types.js';
+import type { Story } from '../../lib/db/types';
 
 const mockEnv = vi.hoisted(() => ({
   discordWebhook: 'https://discord.test/main' as string | undefined,
@@ -35,8 +35,8 @@ const mockQueries = vi.hoisted(() => ({
 
 vi.mock('../../lib/db/queries.js', () => mockQueries);
 
-const { buildLaneEmbed, postLane, DISCORD_LIMITS } = await import('../../lib/digest/discord.js');
-const { digestLane } = await import('../../lib/digest/run.js');
+const { buildLaneEmbed, postLane, DISCORD_LIMITS } = await import('../../lib/digest/discord');
+const { digestLane } = await import('../../lib/digest/run');
 
 function story(overrides: Partial<Story> = {}): Story {
   return {

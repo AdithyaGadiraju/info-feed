@@ -4,7 +4,7 @@
  * not apply the engagement pre-filter and does not fetch article bodies. All three of
  * those belong to the runner in `lib/sources/index.ts`.
  */
-import type { Engagement, Lane } from '../db/types.js';
+import type { Engagement, Lane } from '../db/types';
 
 export type { Engagement, Lane };
 

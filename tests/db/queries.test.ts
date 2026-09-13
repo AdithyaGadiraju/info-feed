@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { db, closeDb } from '../../lib/db/client.js';
-import { migrate } from '../../lib/db/migrate.js';
+import { db, closeDb } from '../../lib/db/client';
+import { migrate } from '../../lib/db/migrate';
 import {
   applyAssignments,
   countPendingItems,
@@ -12,8 +12,8 @@ import {
   upsertItems,
   finishRun,
   startRun,
-} from '../../lib/db/queries.js';
-import { EXCLUDED_STORY_ID, type NewItem } from '../../lib/db/types.js';
+} from '../../lib/db/queries';
+import { EXCLUDED_STORY_ID, type NewItem } from '../../lib/db/types';
 
 const TEST_SOURCE = '__test_queries__';
 const hasDb = Boolean(process.env.DATABASE_URL);

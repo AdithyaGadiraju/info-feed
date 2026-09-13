@@ -2,8 +2,8 @@
  * Live smoke test for the Steam source (ADR 0002): hits the real endpoint, no mocks.
  */
 import { describe, expect, it } from 'vitest';
-import { steam } from '../../lib/sources/steam.js';
-import type { SourcesConfig } from '../../lib/sources/types.js';
+import { steam } from '../../lib/sources/steam';
+import type { SourcesConfig } from '../../lib/sources/types';
 
 const config = {
   sourceTimeoutMs: 20_000,

@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { prices } from '../../lib/sources/prices.js';
-import { sourcesConfig } from '../../config/sources.js';
-import { closeDb } from '../../lib/db/client.js';
-import { db } from '../../lib/db/client.js';
-import type { SourcesConfig } from '../../lib/sources/types.js';
+import { prices } from '../../lib/sources/prices';
+import { sourcesConfig } from '../../config/sources';
+import { closeDb } from '../../lib/db/client';
+import { db } from '../../lib/db/client';
+import type { SourcesConfig } from '../../lib/sources/types';
 
 // Live-endpoint smoke tests per ADR 0002: no mocking CoinGecko. If the free tier
 // rate-limits us (429), the source degrades to [] by design -- test 1 below

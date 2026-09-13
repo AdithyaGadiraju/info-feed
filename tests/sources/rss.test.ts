@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { rss } from '../../lib/sources/rss.js';
-import { sourcesConfig } from '../../config/sources.js';
-import type { SourcesConfig } from '../../lib/sources/types.js';
+import { rss } from '../../lib/sources/rss';
+import { sourcesConfig } from '../../config/sources';
+import type { SourcesConfig } from '../../lib/sources/types';
 
 // Live-endpoint smoke tests per ADR 0002: no mocking the real feeds. Some seed
 // URLs will rot over time; that is expected and is exactly what test 2 guards.

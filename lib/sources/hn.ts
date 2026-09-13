@@ -3,8 +3,8 @@
  * the front page (undifferentiated, routed into a lane by keyword) and one
  * keyword search per lane from `ctx.config.hnQueries` (already lane-scoped).
  */
-import type { Lane } from '../db/types.js';
-import type { RawItem, Source, SourceCtx } from './types.js';
+import type { Lane } from '../db/types';
+import type { RawItem, Source, SourceCtx } from './types';
 
 const ALGOLIA_BASE = 'https://hn.algolia.com/api/v1';
 const FRONT_PAGE_HITS_PER_PAGE = 50;

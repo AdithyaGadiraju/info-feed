@@ -3,10 +3,10 @@
  * sequencing across lanes, and the run row belong to the script that calls this
  * module; this file only knows how to do one lane at a time.
  */
-import { getDigestStories, recordDigest } from '../db/queries.js';
-import type { Lane, Story } from '../db/types.js';
-import { env } from '../env.js';
-import { postLane, type PostResult } from './discord.js';
+import { getDigestStories, recordDigest } from '../db/queries';
+import type { Lane, Story } from '../db/types';
+import { env } from '../env';
+import { postLane, type PostResult } from './discord';
 
 export interface DigestLaneResult {
   sent: number;

@@ -1,5 +1,5 @@
 import postgres from 'postgres';
-import { env } from '../env.js';
+import { env } from '../env';
 
 /**
  * One `postgres` client for the whole process.

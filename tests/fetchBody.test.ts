@@ -2,7 +2,7 @@
  * Live-network tests per ADR 0002 (source tests hit real endpoints; no mocks).
  */
 import { describe, expect, it } from 'vitest';
-import { fetchBody, fetchBodies, MAX_BODY_CHARS } from '../lib/fetchBody.js';
+import { fetchBody, fetchBodies, MAX_BODY_CHARS } from '../lib/fetchBody';
 
 // Wikipedia articles are stable, semantically marked-up, and extraction-friendly —
 // far less likely to rot than a random blog post.
