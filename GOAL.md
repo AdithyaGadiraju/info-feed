@@ -1,4 +1,6 @@
-# Goal: build "infofeed" v1 end to end
+# Goal: build "info-feed" v1 end to end
+
+App name: `info-feed` (package name, README title, Discord header).
 
 You are running as the lead agent on a fresh repo at `/Users/gadi/Documents/infofeed`.
 The design is already settled and recorded. Do not re-litigate it. Read these first, in order:
@@ -36,8 +38,8 @@ Running `npm run digest` on this Mac (and, with the same command, on Windows) in
 - `FEED_USER`, `FEED_PASS`
 - `DATABASE_URL` (Supabase pooler connection string)
 - `TZ` (default `Australia/Sydney`; confirm)
-- Stock tickers for the watchlist in `config/sources.ts` (crypto defaults to BTC, ETH, SOL)
-- Twitter List ids per lane and any extra accounts, RSS feeds or subreddits beyond the seeds in ADR 0002
+- Watchlist: crypto only for v1 (BTC, ETH, SOL). No stock tickers; leave the stock list empty in `config/sources.ts`.
+- RSS feeds and subreddits: use the ADR 0002 seeds as-is. Twitter: skipped for v1 (`TODO.md` T3).
 
 ## Final report must include
 - What runs, what was verified live (which sources returned items, the enrichment result, the Discord post), and what was skipped and why.
