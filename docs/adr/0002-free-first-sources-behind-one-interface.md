@@ -62,3 +62,34 @@ interface RawItem {
 - `lib/fetchBody.ts` — standalone; called by `index.ts`.
 - `config/sources.ts` — seed config; shape from `types.ts`.
 - Each source gets a smoke test under `tests/sources/<name>.test.ts` that runs against the live endpoint and asserts ≥ 1 item with required fields (skipped when creds are absent for twitter).
+
+## Deviations
+Found while building v1 on 2026-09-13. All were verified against the live endpoints
+from Gadi's Mac, on a residential connection, not a datacenter IP.
+
+- **Reddit's public JSON API is blocked outright.** `/r/<sub>/hot.json` returns 403
+  with a descriptive User-Agent, with a full Chrome User-Agent, and via
+  `api.reddit.com`. `old.reddit.com` redirects away. The ADR anticipated this only
+  for the VPS; it is already true from a home connection. The fix is the `.rss`
+  endpoint (`/r/<sub>/hot/.rss`), which returns 200 and needs no auth. Registering a
+  Reddit script app for OAuth remains the documented follow-up and is unchanged.
+- **Consequence: Reddit has no vote counts.** The RSS feed carries no score or
+  comment count, so `redditMinUpvotes` cannot be applied. It is replaced by
+  `thresholds.redditTopN` (default 10): the source takes the top N of each
+  subreddit's "hot" listing, since "hot" is already ranked by engagement. The
+  upvote threshold stays in the config for the day OAuth restores the counts.
+  The runner must not treat a missing `upvotes` field as zero.
+- **Four of the five betting feeds were dead.** Pinnacle Betting Resources (404),
+  Unabated (404), MMA Junkie (404) and Bloody Elbow (403). Replaced with Sherdog
+  and Yahoo MMA for fight news, and Legal Sports Report and Sports Handle for the
+  betting industry. The model-building half of the lane now leans on r/algobetting,
+  r/sportsbook and the Hacker News betting query.
+- **Anthropic publishes no RSS feed.** Every documented path 404s. The feed entry is
+  removed; Anthropic news reaches the ai lane through Hacker News and r/LocalLLaMA.
+- **Unreal Engine moved.** `/en-US/feed` returns 403; `/en-US/rss` serves the same news.
+- **The Hacker News keyword queries needed fixing in code, not config.** Algolia ANDs
+  every token in a query, including the literal word "OR", so the configured
+  `"A OR B OR C"` strings matched nothing. `hn.ts` sends
+  `removeWordsIfNoResults=allOptional` to get OR semantics, and uses the
+  relevance-ranked `search` endpoint rather than `search_by_date`, which degenerates
+  into noise once matching is OR-based.
