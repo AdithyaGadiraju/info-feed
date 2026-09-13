@@ -10,12 +10,12 @@ Gadi wants both a pushed summary and a place to scroll and expand. Delivery chan
 ## Decision
 **Digest** (`lib/digest/run.ts`, `lib/digest/discord.ts`):
 - Runs at 08:00 and 18:00 `TZ`. Selects stories with `score ≥ 4` where `digested_at IS NULL OR updated_at > digested_at`, grouped by lane, ordered by score then `updated_at`, capped at 8 per lane.
-- One webhook message per lane with content (skip empty lanes). Embed per lane: title `AI · 12 Sep AM`, one line per story: score marker, bold title, `summary_short`, link to `${FEED_BASE_URL}/story/{id}`. Webhook URL: `DISCORD_WEBHOOK_URL`, with optional `DISCORD_WEBHOOK_URL_<LANE>` overrides so lanes can go to separate channels.
+- One webhook message per lane with content (skip empty lanes). Embed per lane: title `AI · 12 Sep AM`, one line per story: score marker, bold title, `summary_short`, link to `${FEED_BASE_URL}/story/{id}`. Webhook URL: `DISCORD_WEBHOOK_URL` (main channel, always receives every lane). If `DISCORD_WEBHOOK_URL_<LANE>` is set, the same lane message is additionally posted to that channel (mirror, not override). One Discord server, one webhook per channel.
 - Marks `digested_at` only after a 2xx; writes a `digests` row and a `runs` row. Respects Discord's 2000 char / 10 embed limits by splitting.
 
 **Feed** (Next.js App Router at repo root):
 - `middleware.ts` — HTTP basic auth against `FEED_USER`/`FEED_PASS`; applies to every route. No sessions, no user table.
-- `app/page.tsx` — feed: lane filter chips (all + 4 lanes), min-score toggle (default ≥ 3), infinite scroll via `app/api/feed/route.ts` (cursor on `updated_at,id`, page 30). Card: lane badge, score, title, `summary_short`, source count, relative time. Tap expands in place: `summary_detail` (rendered markdown) or, if null, the source list. Source list shows title, source name, engagement, outbound link.
+- `app/page.tsx` — feed: lane filter chips (all + 5 lanes), min-score toggle (default ≥ 3), infinite scroll via `app/api/feed/route.ts` (cursor on `updated_at,id`, page 30). Card: lane badge, score, title, `summary_short`, source count, relative time. Tap expands in place: `summary_detail` (rendered markdown) or, if null, the source list. Source list shows title, source name, engagement, outbound link.
 - `app/story/[id]/page.tsx` — the same card pre-expanded; digest links land here.
 - Server components read SQLite via `lib/db/queries.ts` (`better-sqlite3`, read-only connection). No client-side data library; plain `fetch` for the scroll route.
 - Styling: Tailwind, dark by default, mobile-first. It is a reading surface, not a dashboard.

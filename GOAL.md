@@ -9,7 +9,7 @@ The design is already settled and recorded. Do not re-litigate it. Read these fi
 - `docs/adr/0004-discord-digest-plus-live-feed-web-app.md` — digest and the Next.js feed
 
 ## Definition of done
-Running `npm run worker` on this Mac ingests from RSS, Reddit, HN, Steam and prices (Twitter too if the key is present), enriches pending items into stories with Sonnet 5, and can post a digest to Gadi's Discord. Running `npm run dev` shows the live feed behind basic auth with lane filters, score toggle, infinite scroll and expand-in-place detail. Every module has the tests named in its ADR and they pass. `README.md` explains setup, env vars, the two dials (`LLM_MODEL`, `ENRICH_INTERVAL_MIN`) and how to deploy. Nothing has been deployed to the VPS.
+Running `npm run worker` on this Mac ingests from RSS, Reddit, HN, Steam and prices across five lanes (ai, markets, gamedev, games, betting) (Twitter too if the key is present), enriches pending items into stories with Sonnet 5, and can post a digest to Gadi's Discord. Running `npm run dev` shows the live feed behind basic auth with lane filters, score toggle, infinite scroll and expand-in-place detail. Every module has the tests named in its ADR and they pass. `README.md` explains setup, env vars, the two dials (`LLM_MODEL`, `ENRICH_INTERVAL_MIN`) and how to deploy. Nothing has been deployed to the VPS.
 
 ## How to work
 1. **Load the Claude API skill** (`/claude-api`) before writing any SDK code. Use `@anthropic-ai/sdk`, model id `claude-sonnet-5` exactly, structured outputs via `output_config.format`, adaptive thinking, `effort: "low"`, a `cache_control` breakpoint on the system prompt. Never append date suffixes to model ids.
@@ -31,7 +31,7 @@ Running `npm run worker` on this Mac ingests from RSS, Reddit, HN, Steam and pri
 
 ## Inputs Gadi provides (check `.env` before starting; report any that are missing)
 - `ANTHROPIC_API_KEY`
-- `DISCORD_WEBHOOK_URL` (plus optional `DISCORD_WEBHOOK_URL_AI|MARKETS|GAMEDEV|GAMES`)
+- `DISCORD_WEBHOOK_URL` (plus optional `DISCORD_WEBHOOK_URL_AI|MARKETS|GAMEDEV|GAMES|BETTING`, each mirrors that lane in addition to the main channel)
 - `RETTIWT_API_KEY` from the throwaway account (optional for v1)
 - `FEED_USER`, `FEED_PASS`
 - `TZ` (default `Australia/Sydney`; confirm)

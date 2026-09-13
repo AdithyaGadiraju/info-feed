@@ -5,7 +5,7 @@
 - Deciders: Gadi + Claude
 
 ## Context
-Personal news digest across four lanes: `ai`, `markets` (stocks + crypto majors), `gamedev` (3D/animation/engine tech), `games` (releases, hype, big gaming news). Sources are Twitter, Reddit, RSS, Hacker News, Steam and price feeds. An LLM condenses everything into short summaries with an expandable detail tier. Two consumers: a pushed Discord digest and a live scrolling web feed.
+Personal news digest across five lanes: `ai`, `markets` (stocks + crypto majors), `gamedev` (3D/animation/engine tech), `games` (releases, hype, big gaming news), `betting` (sports betting models, MMA/fighting betting, how to build and improve betting models). Sources are Twitter, Reddit, RSS, Hacker News, Steam and price feeds. An LLM condenses everything into short summaries with an expandable detail tier. Two consumers: a pushed Discord digest and a live scrolling web feed.
 
 Constraints that came out of the review:
 - Single user. No multi-tenancy, no auth beyond keeping strangers out.
@@ -30,7 +30,7 @@ One npm package, one `node_modules`, two entrypoints:
 - `price_snapshots` — `symbol`, `price`, `ts` (for move detection, ADR 0002).
 - `runs` — `job`, `started_at`, `finished_at`, `ok`, `counts` (JSON), `error` (text). Every job writes a row; this is the only observability needed.
 
-**Config:** `config/sources.ts` holds lanes, feeds, subreddits, HN keyword lists, Twitter lists/queries, and tickers. Secrets live in `.env` (`ANTHROPIC_API_KEY`, `DISCORD_WEBHOOK_URL` + optional per-lane overrides, `RETTIWT_API_KEY`, `FEED_USER`, `FEED_PASS`, `TZ`, `DB_PATH`, `PORT`, `LLM_MODEL`, `ENRICH_INTERVAL_MIN`).
+**Config:** `config/sources.ts` holds lanes, feeds, subreddits, HN keyword lists, Twitter lists/queries, and tickers. Secrets live in `.env` (`ANTHROPIC_API_KEY`, `DISCORD_WEBHOOK_URL` + optional per-lane mirror URLs, `RETTIWT_API_KEY`, `FEED_USER`, `FEED_PASS`, `TZ`, `DB_PATH`, `PORT`, `LLM_MODEL`, `ENRICH_INTERVAL_MIN`).
 
 **Layout:**
 ```
