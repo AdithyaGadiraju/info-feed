@@ -108,6 +108,44 @@ in `config/sources.ts` decide how many items reach the model at all, and the **p
 rubric** in `lib/enrich/prompt.ts` decides what scores a 4 or 5. If the feed is noisy,
 raise the score threshold and tighten the rubric rather than changing the UI.
 
+## What it actually costs
+
+Measured on the first real run, 2026-09-14: one `npm run digest -- --since 24`
+covering a full day of content. 369 items ingested, 234 removed by the engagement
+pre-filter, 139 sent to the model across 5 lanes in 7 calls.
+
+| | tokens | priced as Sonnet 5 on the API |
+| --- | --- | --- |
+| input (uncached) | 22 | $0.00 |
+| cache writes | 55,495 | $0.14 |
+| cache reads | 166,078 | $0.03 |
+| output | 40,317 | $0.40 |
+| **total** | | **$0.60** |
+
+Two things fall out of that.
+
+**Output tokens are 70% of the bill.** They are the detail summaries. The lever is
+the score threshold for generating them, not the number of sources you ingest.
+
+**Every CLI call carries about 14k tokens of Claude Code's own overhead** before
+your prompt starts, even with `--restricted`. That makes the number of calls matter
+as much as the amount of content, and it is why enrichment never runs for an empty
+lane.
+
+So the cadence dominates the monthly number:
+
+| How you run it | Calls/day | Estimated monthly |
+| --- | --- | --- |
+| `npm run digest` once a day | ~7 | **~$18** |
+| `npm run digest` morning and evening | ~12 | ~$23 |
+| Worker with `ENRICH_INTERVAL_MIN=60` | ~60-80 | ~$85 |
+
+The hourly worker is roughly four times the cost of running the digest on command
+for the same content, because it splits the same items across many more calls and
+pays the per-call overhead every time. If you run the worker, raise
+`ENRICH_INTERVAL_MIN` to 180 or more. On the default CLI transport none of this is
+billed, it draws on the Claude subscription's rate-limit window instead.
+
 ## LLM transport
 
 `LLM_TRANSPORT=cli` (default) spawns the local `claude` CLI in headless mode, using

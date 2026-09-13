@@ -100,21 +100,37 @@ async function fetchSubreddit(spec: SubredditSpec, ctx: SourceCtx): Promise<RawI
   const res = await fetchOnce(url, spec, ctx);
   if (!res) return [];
 
-  let xml: string;
-  let feed: Awaited<ReturnType<Parser['parseString']>>;
   try {
-    xml = await res.text();
-    feed = await parser.parseString(xml);
+    const feed = await parser.parseString(await res.text());
+    return mapEntries(feed.items, spec, ctx);
   } catch (err) {
     console.warn(`[reddit] r/${spec.sub} returned unparseable feed: ${(err as Error).message}`);
     return [];
   }
+}
 
+/** One Atom entry as `rss-parser` hands it over. Only the fields this source reads. */
+export interface RedditEntry {
+  id?: string;
+  link?: string;
+  title?: string;
+  author?: string;
+  content?: string;
+  isoDate?: string;
+  pubDate?: string;
+}
+
+/**
+ * Pure mapping from parsed Atom entries to RawItems. Split out from the fetch so
+ * the parsing rules can be tested against a fixture: Reddit rate limits this
+ * endpoint hard enough that a live test cannot reliably assert on content.
+ */
+export function mapEntries(entries: RedditEntry[], spec: SubredditSpec, ctx: SourceCtx): RawItem[] {
   // "Hot" is already ranked by Reddit's own engagement signal, and the RSS feed
   // carries no vote/comment counts to re-rank by. Taking the top N entries is the
   // same cost control as the old upvote threshold, expressed as a rank cutoff
   // instead of a vote count (config: thresholds.redditTopN).
-  const topN = feed.items.slice(0, ctx.config.thresholds.redditTopN);
+  const topN = entries.slice(0, ctx.config.thresholds.redditTopN);
 
   const items: RawItem[] = [];
   for (const entry of topN) {
@@ -122,7 +138,8 @@ async function fetchSubreddit(spec: SubredditSpec, ctx: SourceCtx): Promise<RawI
     const id = entry.id;
     if (!permalink || !id) continue;
 
-    const publishedAt = entry.isoDate ? new Date(entry.isoDate) : entry.pubDate ? new Date(entry.pubDate) : undefined;
+    const raw = entry.isoDate ?? entry.pubDate;
+    const publishedAt = raw ? new Date(raw) : undefined;
     if (!publishedAt || Number.isNaN(publishedAt.getTime()) || publishedAt < ctx.since) continue;
 
     const contentHtml = entry.content ?? '';
