@@ -14,12 +14,14 @@ export const sourcesConfig: SourcesConfig = {
   feeds: [
     // ai
     { lane: 'ai', name: 'OpenAI', url: 'https://openai.com/news/rss.xml' },
-    { lane: 'ai', name: 'Anthropic', url: 'https://www.anthropic.com/news/rss.xml' },
+    // Anthropic publishes no RSS feed any more; every documented path 404s as of
+    // 2026-09-13. Anthropic news reaches the ai lane via Hacker News and r/LocalLLaMA
+    // instead. See the Deviations section of ADR 0002.
     { lane: 'ai', name: 'Google DeepMind', url: 'https://deepmind.google/blog/rss.xml' },
     { lane: 'ai', name: 'Hugging Face', url: 'https://huggingface.co/blog/feed.xml' },
     // gamedev
     { lane: 'gamedev', name: 'Godot', url: 'https://godotengine.org/rss.xml' },
-    { lane: 'gamedev', name: 'Unreal Engine', url: 'https://www.unrealengine.com/en-US/feed' },
+    { lane: 'gamedev', name: 'Unreal Engine', url: 'https://www.unrealengine.com/en-US/rss' },
     { lane: 'gamedev', name: 'Unity', url: 'https://blog.unity.com/feed' },
     { lane: 'gamedev', name: 'Blender', url: 'https://www.blender.org/feed/' },
     { lane: 'gamedev', name: '80.lv', url: 'https://80.lv/feed/' },
@@ -31,11 +33,14 @@ export const sourcesConfig: SourcesConfig = {
     // markets
     { lane: 'markets', name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
     { lane: 'markets', name: 'CNBC Markets', url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258' },
-    // betting
-    { lane: 'betting', name: 'Pinnacle Betting Resources', url: 'https://www.pinnacle.com/en/betting-resources/rss' },
-    { lane: 'betting', name: 'Unabated', url: 'https://unabated.com/articles/rss.xml' },
-    { lane: 'betting', name: 'MMA Junkie', url: 'https://mmajunkie.usatoday.com/feed' },
-    { lane: 'betting', name: 'Bloody Elbow', url: 'https://www.bloodyelbow.com/feed' },
+    // betting. All four ADR 0002 seeds (Pinnacle, Unabated, MMA Junkie, Bloody Elbow)
+    // were dead on 2026-09-13 and are replaced with live equivalents covering the same
+    // two halves of the lane: MMA/fight news, and the betting industry itself. The
+    // model-building side of the lane comes from r/algobetting and the HN betting query.
+    { lane: 'betting', name: 'Sherdog', url: 'https://www.sherdog.com/rss/news.xml' },
+    { lane: 'betting', name: 'Yahoo MMA', url: 'https://sports.yahoo.com/mma/rss.xml' },
+    { lane: 'betting', name: 'Legal Sports Report', url: 'https://www.legalsportsreport.com/feed/' },
+    { lane: 'betting', name: 'Sports Handle', url: 'https://sportshandle.com/feed/' },
   ],
 
   subreddits: [
@@ -84,6 +89,11 @@ export const sourcesConfig: SourcesConfig = {
   priceMovePct: 5,
 
   thresholds: {
+    // Reddit's public JSON API returns 403 to unauthenticated clients, so the source
+    // reads the .rss endpoint instead, which carries no vote counts. `redditTopN`
+    // replaces the upvote threshold: "hot" is already ranked by engagement, so taking
+    // the top N of each subreddit is the same cost control by a different measure.
+    redditTopN: 10,
     redditMinUpvotes: 50,
     hnMinPoints: 50,
     twitterMinLikes: 100,

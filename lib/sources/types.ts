@@ -74,6 +74,13 @@ export interface TwitterQuerySpec {
  * model. Curated RSS has no threshold because the curation is the filter.
  */
 export interface Thresholds {
+  /**
+   * How many posts to keep from each subreddit's "hot" listing. This is Reddit's
+   * cost control, because the .rss endpoint the source is forced to use carries no
+   * vote counts (the JSON API 403s unauthenticated clients).
+   */
+  redditTopN: number;
+  /** Kept for the OAuth follow-up, when vote counts become available again. */
   redditMinUpvotes: number;
   hnMinPoints: number;
   twitterMinLikes: number;
