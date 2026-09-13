@@ -3,7 +3,7 @@
 You are running as the lead agent on a fresh repo at `/Users/gadi/Documents/infofeed`.
 The design is already settled and recorded. Do not re-litigate it. Read these first, in order:
 
-- `docs/adr/0001-single-node-repo-sqlite-worker-plus-web.md` — system shape, data model, layout, config
+- `docs/adr/0001-single-node-repo-sqlite-worker-plus-web.md` — system shape, data model (Supabase Postgres), layout, config
 - `docs/adr/0002-free-first-sources-behind-one-interface.md` — Source interface, the six sources, pre-filter, body fetching
 - `docs/adr/0003-single-sonnet-call-cluster-summarise-score.md` — the one LLM call, schema, rubric, cost dials
 - `docs/adr/0004-discord-digest-plus-live-feed-web-app.md` — digest and the Next.js feed
@@ -14,7 +14,7 @@ Running `npm run digest` on this Mac (and, with the same command, on Windows) in
 ## How to work
 1. **LLM transport is the local `claude` CLI** (`LLM_TRANSPORT=cli`, default), per ADR 0003. Spawn `claude -p` with tools disabled and JSON output, model id `claude-sonnet-5` exactly. Load `/claude-api` before writing the optional SDK transport (`@anthropic-ai/sdk`, `output_config.format`, adaptive thinking, `effort: "low"`, `cache_control` on the system prompt). Never append date suffixes to model ids.
 2. **Generate the task manifest with `/adr-to-tasks`** on the four ADRs, then execute it wave by wave with parallel subagents. Each ADR's "Implementation surface" section already states file ownership; keep it disjoint. Expected shape:
-   - Wave 0 (single agent): `git init`, scaffold (`package.json`, `tsconfig`, Next.js App Router with Tailwind, `.env.example`, `.gitignore`), `lib/db/*` (schema, client, typed queries), `lib/sources/types.ts`, `config/sources.ts` seed. This is the contract everything else builds on; get it reviewed before fanning out.
+   - Wave 0 (single agent): `git init`, scaffold (`package.json`, `tsconfig`, Next.js App Router with Tailwind, `.env.example`, `.gitignore`), `lib/db/*` (schema, `postgres` client, migrate, typed queries; run `npm run db:migrate` against Gadi's Supabase project), `lib/sources/types.ts`, `config/sources.ts` seed. This is the contract everything else builds on; get it reviewed before fanning out.
    - Wave 1 (parallel, one agent each): `rss.ts`, `reddit.ts`, `hn.ts`, `steam.ts`, `prices.ts`, `fetchBody.ts`, `lib/enrich/*`, `lib/digest/*`, the web app (`app/*`, `components/*`, `middleware.ts`). Each with its tests.
    - Wave 2 (parallel): `lib/sources/index.ts` runner + pre-filter, `scripts/digest.ts` on-command pipeline, `worker/index.ts` scheduler, `twitter.ts` (last; must degrade to `[]` on any auth error).
    - Wave 3 (single agent): end-to-end run on the Mac against live sources, one real `npm run digest` run that posts lane by lane to the webhook, feed check in the browser, README, `/code-review` of the whole diff, fix findings, commit.
@@ -25,7 +25,7 @@ Running `npm run digest` on this Mac (and, with the same command, on Windows) in
 ## Guardrails
 - Do **not** deploy to, ssh into, or configure the bet337 VPS. Deployment is a separate session with explicit approval and is blocked until `TODO.md` T1 is resolved (the CLI transport only works on this Mac). Write the deploy steps into `README.md` instead (own directory, own process-manager entry, single port, reverse-proxy note, TLS required for basic auth).
 - Do not use Gadi's main Twitter account. `RETTIWT_API_KEY` comes only from the throwaway account. If the key is missing, skip Twitter entirely and say so in the final report.
-- Do not add a database, queue, or hosted service beyond what the ADRs name.
+- Do not add a database, queue, or hosted service beyond what the ADRs name (Supabase Postgres is the only one).
 - Do not swap Sonnet 5 for Opus or Haiku by default. They are env overrides only.
 - If an ADR turns out to be wrong in practice (an endpoint is dead, a library is broken), fix it the simplest way, note the deviation in the ADR under a `## Deviations` heading, and continue. Do not stop to ask unless the deviation changes cost or scope materially.
 
@@ -34,6 +34,7 @@ Running `npm run digest` on this Mac (and, with the same command, on Windows) in
 - `DISCORD_WEBHOOK_URL` (plus optional `DISCORD_WEBHOOK_URL_AI|MARKETS|GAMEDEV|GAMES|BETTING`, each mirrors that lane in addition to the main channel)
 - `RETTIWT_API_KEY` from the throwaway account (optional for v1)
 - `FEED_USER`, `FEED_PASS`
+- `DATABASE_URL` (Supabase pooler connection string)
 - `TZ` (default `Australia/Sydney`; confirm)
 - Stock tickers for the watchlist in `config/sources.ts` (crypto defaults to BTC, ETH, SOL)
 - Twitter List ids per lane and any extra accounts, RSS feeds or subreddits beyond the seeds in ADR 0002

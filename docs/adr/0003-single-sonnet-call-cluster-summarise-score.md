@@ -24,7 +24,7 @@ Cost forks the design. A live feed means many enrichment runs a day. Measured ag
   }
   ```
 - **Prompt rules:** every pending item is assigned or dropped exactly once. `summaryShort` ≤ 2 sentences, plain words, no hype. `summaryDetail` is markdown, 150–300 words, only for `score ≥ 3` (null otherwise); it must say what happened, why it matters for Gadi's lanes, and what to watch next, citing the source titles. Score rubric: 5 = major (frontier model release, engine major version, market-moving event, AAA launch, a new public betting-model method or dataset, a major MMA card or fight-market shift); 4 = notable; 3 = worth a line; 2–1 = noise. Existing stories are updated only when a new item materially changes them.
-- **Write path:** one SQLite transaction per response: create stories, set `items.story_id`, mark dropped items with `story_id = -1`, bump `stories.updated_at` only on material updates (so the digest re-includes them).
+- **Write path:** one Postgres transaction per response: create stories, set `items.story_id`, mark dropped items with `story_id = -1`, bump `stories.updated_at` only on material updates (so the digest re-includes them).
 - **Triggers:** on command via `npm run digest` (per lane, in sequence), or in the worker every `ENRICH_INTERVAL_MIN` (default 60) or when pending count ≥ 15. Skip the call when nothing is pending for that lane.
 - **Failure:** CLI non-zero exit, API error or schema mismatch leaves items pending for the next run; logged to `runs`. Max 2 retries.
 

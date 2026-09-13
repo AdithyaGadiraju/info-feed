@@ -18,7 +18,7 @@ Gadi wants both a pushed summary and a place to scroll and expand. Delivery chan
 - `middleware.ts` — HTTP basic auth against `FEED_USER`/`FEED_PASS`; applies to every route. No sessions, no user table.
 - `app/page.tsx` — feed: lane filter chips (all + 5 lanes), min-score toggle (default ≥ 3), infinite scroll via `app/api/feed/route.ts` (cursor on `updated_at,id`, page 30). Card: lane badge, score, title, `summary_short`, source count, relative time. Tap expands in place: `summary_detail` (rendered markdown) or, if null, the source list. Source list shows title, source name, engagement, outbound link.
 - `app/story/[id]/page.tsx` — the same card pre-expanded; digest links land here.
-- Server components read SQLite via `lib/db/queries.ts` (`better-sqlite3`, read-only connection). No client-side data library; plain `fetch` for the scroll route.
+- Server components read Supabase Postgres via `lib/db/queries.ts` (`postgres` client, `DATABASE_URL`). No client-side data library; plain `fetch` for the scroll route.
 - Styling: Tailwind, dark by default, mobile-first. It is a reading surface, not a dashboard.
 - Runs as `next start` on `PORT`; reverse-proxied by whatever the box already uses (discovered at deploy time).
 
@@ -28,7 +28,7 @@ Gadi wants both a pushed summary and a place to scroll and expand. Delivery chan
 - **Static HTML pages.** Rejected by Gadi; he wants a live feed.
 - **Websockets / live push.** Refresh and scroll are enough for a personal feed; push adds a long-lived connection to a shared box for nothing.
 - **Real auth (OAuth, sessions).** Single user; basic auth over HTTPS is the whole threat model.
-- **A separate API server.** Next.js route handlers reading SQLite directly remove a layer.
+- **A separate API server.** Next.js route handlers reading Postgres directly remove a layer.
 
 ## Consequences
 - Basic auth is only safe behind HTTPS; the reverse proxy must terminate TLS or the app must bind to localhost with a tunnel.
