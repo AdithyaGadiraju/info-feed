@@ -60,6 +60,17 @@ export const env = {
   get anthropicApiKey(): string | undefined {
     return opt('ANTHROPIC_API_KEY');
   },
+  /**
+   * Hard ceiling on what one model call may spend, passed to the CLI as
+   * `--max-budget-usd`. A runaway response is the only way a single call can cost
+   * real money: 60 items each needing a 300-word detail summary is a legitimate
+   * 24k-token answer, and nothing else bounds it. The worst call in the first real
+   * run was US$0.21, so this leaves ample headroom and only trips on a genuine
+   * runaway.
+   */
+  get llmMaxCallUsd(): number {
+    return num('LLM_MAX_CALL_USD', 1);
+  },
   get enrichIntervalMin(): number {
     return num('ENRICH_INTERVAL_MIN', 60);
   },

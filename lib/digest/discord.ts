@@ -52,8 +52,32 @@ function scoreMarker(score: number): string {
   return '●'.repeat(filled) + '○'.repeat(5 - filled);
 }
 
+const ELLIPSIS = '…';
+
+/**
+ * One story as one packable line. Nothing caps `summary_short` on the way in (the
+ * enrichment validator caps only the title), and `packDescriptions` can only split
+ * between lines — so a single runaway summary would be emitted intact, rejected by
+ * Discord with a 400, and rebuilt identically on every later run, wedging the lane
+ * forever. Truncating here is the only place that can make that impossible. The
+ * link is never the part that gets cut: a clipped summary still reaches the story,
+ * a clipped URL reaches nothing.
+ */
 function storyLine(story: Story, baseUrl: string): string {
-  return `${scoreMarker(story.score)} **${story.title}**\n${story.summaryShort}\n${baseUrl}/story/${story.id}`;
+  const link = `${baseUrl}/story/${story.id}`;
+  const head = `${scoreMarker(story.score)} **${story.title}**`;
+  const line = `${head}\n${story.summaryShort}\n${link}`;
+  if (line.length <= DISCORD_LIMITS.embedDescription) return line;
+
+  const NEWLINES = 2;
+  const room =
+    DISCORD_LIMITS.embedDescription - (head.length + link.length + NEWLINES + ELLIPSIS.length);
+  if (room > 0) return `${head}\n${story.summaryShort.slice(0, room)}${ELLIPSIS}\n${link}`;
+
+  // Pathological: the title alone overruns the embed. Keep the link and whatever
+  // of the heading fits in front of it.
+  const headRoom = DISCORD_LIMITS.embedDescription - (link.length + 1 + ELLIPSIS.length);
+  return `${head.slice(0, Math.max(0, headRoom))}${ELLIPSIS}\n${link}`;
 }
 
 /**
@@ -116,6 +140,12 @@ export interface PostResult {
 }
 
 /**
+ * No request was attempted at all. Distinct from `0` (request made, transport
+ * failed) so a run row or a console line says which of the two happened.
+ */
+export const NOT_SENT_STATUS = -1;
+
+/**
  * Posts one payload. Retries exactly once on a 429, honouring the `retry_after`
  * (seconds) Discord puts in the body. Never throws — a dead webhook or malformed
  * body must not crash a digest run; the caller decides what a non-2xx means.
@@ -171,18 +201,40 @@ export async function postLane(
 ): Promise<PostResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const payloads = buildLaneEmbed(lane, stories, env.feedBaseUrl, opts.now, opts.tz ?? env.tz);
+  // The only honest success without an HTTP call: there was nothing to send, so
+  // there is also nothing a caller could wrongly mark as digested.
   if (payloads.length === 0) return { ok: true, status: 0 };
 
   const mainUrl = env.discordWebhook;
+  if (!mainUrl) {
+    // `DISCORD_WEBHOOK_URL` is optional in `lib/env.ts`, so an unset main webhook
+    // is a live configuration state, not an impossible one. Reporting it as a
+    // success would let `digestLane` stamp `digested_at` on stories nobody ever
+    // received, consuming them forever (ADR 0004: mark only after a 2xx).
+    console.error(
+      `[digest] ${lane}: DISCORD_WEBHOOK_URL is not set — nothing was posted and nothing will be marked digested`,
+    );
+    return { ok: false, status: NOT_SENT_STATUS };
+  }
+
   const laneUrl = env.discordLaneWebhook(lane);
 
   const mainResults: PostResult[] = [];
   for (const payload of payloads) {
-    if (mainUrl) mainResults.push(await postWebhook(mainUrl, payload, fetchImpl));
-    if (laneUrl) await postWebhook(laneUrl, payload, fetchImpl);
+    mainResults.push(await postWebhook(mainUrl, payload, fetchImpl));
+    if (laneUrl) {
+      const mirrored = await postWebhook(laneUrl, payload, fetchImpl);
+      // The mirror is never an override (ADR 0004), so it must not change the
+      // returned status — but a revoked or mistyped lane URL has to be visible
+      // somewhere, and this log line is the only place it can be.
+      if (!mirrored.ok) {
+        console.warn(
+          `[digest] ${lane}: per-lane mirror webhook returned ${mirrored.status} (main channel unaffected)`,
+        );
+      }
+    }
   }
 
-  if (mainResults.length === 0) return { ok: true, status: 0 };
   // Report the first failure if any payload failed, otherwise the last success —
   // callers use this single status to decide whether the whole lane is "digested".
   return mainResults.find((r) => !r.ok) ?? mainResults[mainResults.length - 1];

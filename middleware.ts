@@ -45,9 +45,15 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
   const header = req.headers.get('authorization');
   if (!header || !header.toLowerCase().startsWith('basic ')) return unauthorized();
 
+  // `atob` yields Latin-1 bytes, but browsers base64-encode credentials as UTF-8,
+  // so a non-ASCII password (e.g. "pässwörd") decoded straight through `atob` came
+  // out as mojibake ("pÃ¤sswÃ¶rd") and could never match. Decode to raw bytes first,
+  // then interpret those bytes as UTF-8.
   let decoded: string;
   try {
-    decoded = atob(header.slice('basic '.length).trim());
+    const binary = atob(header.slice('basic '.length).trim());
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    decoded = new TextDecoder().decode(bytes);
   } catch {
     return unauthorized();
   }

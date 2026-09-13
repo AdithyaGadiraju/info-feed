@@ -62,6 +62,24 @@ describe('middleware basic auth', () => {
     // NextResponse.next() marks the request as handed on to the route.
     expect(res.headers.get('x-middleware-next')).toBe('1');
   });
+
+  it('authenticates a non-ASCII password base64-encoded as UTF-8, the way a browser does it', async () => {
+    // `atob` alone decodes to Latin-1 bytes: "pässwörd" would come back as
+    // "pÃ¤sswÃ¶rd" and never match. FEED_USER/FEED_PASS are swapped out for the
+    // duration of this test so it exercises the real comparison path.
+    const prevUser = process.env.FEED_USER;
+    const prevPass = process.env.FEED_PASS;
+    process.env.FEED_USER = 'someone';
+    process.env.FEED_PASS = 'pässwörd';
+    try {
+      const res = await middleware(request('/api/feed', { authorization: basic('someone', 'pässwörd') }));
+      expect(res.status).toBe(200);
+      expect(res.headers.get('x-middleware-next')).toBe('1');
+    } finally {
+      process.env.FEED_USER = prevUser;
+      process.env.FEED_PASS = prevPass;
+    }
+  });
 });
 
 describe('GET /api/feed parameter validation', () => {
@@ -72,10 +90,31 @@ describe('GET /api/feed parameter validation', () => {
   });
 
   it('rejects a malformed cursor with a 400 rather than blowing up on the timestamptz cast', async () => {
-    for (const cursor of ['not-base64!!', btoa('{'), btoa('{"updatedAt":"nope","id":1}'), btoa('{"id":"x"}')]) {
+    for (const cursor of [
+      'not-base64!!',
+      btoa('{'),
+      btoa('{"updatedAt":"nope","id":1}'),
+      btoa('{"id":"x"}'),
+      // `Date.parse` accepts both of these, but `::timestamptz` in Postgres does
+      // not — this is exactly the gap that let a crafted cursor reach the
+      // database and blow up into a 500 instead of a 400.
+      btoa(JSON.stringify({ updatedAt: '5', id: 1 })),
+      btoa(JSON.stringify({ updatedAt: '2020', id: 1 })),
+    ]) {
       const res = await GET(request(`/api/feed?cursor=${encodeURIComponent(cursor)}`));
       expect(res.status, `cursor=${cursor}`).toBe(400);
     }
+  });
+
+  it.skipIf(!hasDb)('accepts a well-formed cursor in the format lib/db/queries.ts actually produces', async () => {
+    const first = await getFeedPage({ minScore: 1, limit: 1 });
+    if (!first.nextCursor) {
+      // Empty stories table (or a single row): nothing to build a real cursor from.
+      return;
+    }
+    const cursor = btoa(JSON.stringify(first.nextCursor));
+    const res = await GET(request(`/api/feed?cursor=${encodeURIComponent(cursor)}&minScore=1&limit=1`));
+    expect(res.status).toBe(200);
   });
 
   it('rejects a non-numeric storyId', async () => {

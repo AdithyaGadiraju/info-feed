@@ -36,8 +36,15 @@ CREATE TABLE IF NOT EXISTS stories (
   summary_short  text        NOT NULL,
   summary_detail text,
   score          smallint    NOT NULL CHECK (score BETWEEN 1 AND 5),
-  first_seen_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at     timestamptz NOT NULL DEFAULT now(),
+  first_seen_at  timestamptz NOT NULL DEFAULT date_trunc('milliseconds', now()),
+  -- Millisecond precision is deliberate. The feed pages on (updated_at, id), and
+  -- the cursor makes a round trip through JavaScript, where a Date holds only
+  -- milliseconds. A microsecond-precision column meant the cursor was always
+  -- slightly in the past, so every row tied on the truncated value compared
+  -- greater and was skipped -- and ties are the normal case, because one
+  -- enrichment transaction stamps its whole chunk with a single now().
+  -- Truncating at the source keeps the cursor exact and the index intact.
+  updated_at     timestamptz NOT NULL DEFAULT date_trunc('milliseconds', now()),
   digested_at    timestamptz
 );
 
@@ -80,3 +87,9 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 
 CREATE INDEX IF NOT EXISTS runs_job_started_idx ON runs (job, started_at DESC);
+
+-- Idempotent fixups for databases created before the millisecond decision above.
+ALTER TABLE stories ALTER COLUMN updated_at    SET DEFAULT date_trunc('milliseconds', now());
+ALTER TABLE stories ALTER COLUMN first_seen_at SET DEFAULT date_trunc('milliseconds', now());
+UPDATE stories SET updated_at = date_trunc('milliseconds', updated_at)
+ WHERE updated_at <> date_trunc('milliseconds', updated_at);

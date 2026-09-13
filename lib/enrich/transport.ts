@@ -97,6 +97,8 @@ export function completeViaCli(system: string, user: string): Promise<Completion
     '--permission-mode',
     'dontAsk',
     '--restricted',
+    '--max-budget-usd',
+    String(env.llmMaxCallUsd),
     '--system-prompt',
     system,
   ];

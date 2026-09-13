@@ -102,7 +102,12 @@ async function runLane(lane: Lane, since: Date): Promise<LaneOutcome> {
 
     const posted = await digestLane(lane);
     out.posted = posted.sent;
-    if (!posted.ok) out.error = `Discord returned ${posted.status}`;
+    if (!posted.ok) {
+      // -1 means postLane never made a request, which is a configuration problem
+      // rather than a Discord problem; saying "Discord returned -1" would send
+      // someone looking in the wrong place.
+      out.error = posted.status < 0 ? 'no Discord webhook configured' : `Discord returned ${posted.status}`;
+    }
   } catch (err) {
     out.error = err instanceof Error ? err.message : String(err);
   }

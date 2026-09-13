@@ -16,3 +16,23 @@ upvote threshold. To fix: register a free Reddit script app, put the client id a
 secret in `.env`, and switch `lib/sources/reddit.ts` to OAuth (100 req/min). The module
 shape does not change. This is the single highest-value follow-up for feed quality,
 because r/gamedev, r/godot, r/MMA and r/algobetting are the main source for three lanes.
+
+T5. **Nothing stops two digests running at once.** Found by the v1 code review on
+2026-09-14. The worker's overlap guard is a `Set` inside one process, and
+`scripts/digest.ts` has none, so `npm run digest` on the Mac while the worker's 08:00
+cron fires means both select the same stories before either marks them, and the same
+stories get posted to Discord twice. Two concurrent enrichments of one lane are worse:
+both read the same pending rows, both call the model, and the losing transaction leaves
+stories with no items attached that still score >= 4, so they reach Discord empty.
+Not fixed in v1 because the obvious fix does not work here: `pg_try_advisory_lock` is
+session-scoped, and `DATABASE_URL` is a Supavisor pooler string in transaction mode
+where consecutive statements can land on different backends. The fix needs either a
+claim row written in the same transaction as the read (`UPDATE ... RETURNING` or
+`SELECT ... FOR UPDATE SKIP LOCKED`), or a direct non-pooled connection used solely for
+the lock. Decide which before running the worker and on-command digests side by side.
+
+T6. **A digest split across several Discord messages is not atomic.** If a lane needs
+two messages and the second fails, `digestLane` records nothing, so the next run reposts
+the first message's stories. Rare (a lane must exceed Discord's limits across 8 stories)
+and the failure mode is a duplicate rather than a loss, so it was left alone. The fix is
+to record per-message rather than per-lane.

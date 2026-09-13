@@ -66,27 +66,41 @@ async function enrichChunk(
   let costUsd = 0;
   let lastError = 'no attempt was made';
 
+  // The retry wraps ONLY the model call and its validation, never the write.
+  // applyAssignments is atomic, so a rollback is safe, but a throw *after* the
+  // COMMIT is acknowledged is not: postgres.js surfaces a dropped connection as an
+  // error even though the transaction landed. Retrying from inside would re-apply
+  // the same batch against ids the validator still believes are pending, creating
+  // a duplicate copy of every story in the chunk.
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    let validated: ReturnType<typeof validateEnrichResult>;
     try {
       const completion = await complete(system, user);
       usage.push(completion.usage);
       costUsd += completion.costUsd ?? 0;
+      validated = validateEnrichResult(extractJsonObject(completion.text), pendingIds, openIds);
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      console.warn(`enrich ${lane}: attempt ${attempt} failed — ${lastError}`);
+      continue;
+    }
 
-      const parsed = extractJsonObject(completion.text);
-      const validated = validateEnrichResult(parsed, pendingIds, openIds);
-      if (!validated.ok) {
-        lastError = `schema mismatch: ${validated.errors.slice(0, 5).join('; ')}`;
-        console.warn(`enrich ${lane}: attempt ${attempt} rejected — ${lastError}`);
-        continue;
-      }
+    if (!validated.ok) {
+      lastError = `schema mismatch: ${validated.errors.slice(0, 5).join('; ')}`;
+      console.warn(`enrich ${lane}: attempt ${attempt} rejected — ${lastError}`);
+      continue;
+    }
 
-      if (validated.leftover.length > 0) {
-        // Not a failure: these ids keep story_id NULL and the next run sees them.
-        console.warn(
-          `enrich ${lane}: ${validated.leftover.length} item(s) left pending — ${validated.leftover.join(', ')}`,
-        );
-      }
+    if (validated.leftover.length > 0) {
+      // Not a failure: these ids keep story_id NULL and the next run sees them.
+      console.warn(
+        `enrich ${lane}: ${validated.leftover.length} item(s) left pending — ${validated.leftover.join(', ')}`,
+      );
+    }
 
+    // One attempt only. If this throws we report the chunk as failed and leave the
+    // items pending rather than risk writing the batch twice.
+    try {
       const applied = await applyAssignments(lane, validated.value);
       return {
         ok: true,
@@ -96,8 +110,9 @@ async function enrichChunk(
         leftover: validated.leftover,
       };
     } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-      console.warn(`enrich ${lane}: attempt ${attempt} failed — ${lastError}`);
+      lastError = `write failed: ${err instanceof Error ? err.message : String(err)}`;
+      console.error(`enrich ${lane}: ${lastError}`);
+      return { ok: false, usage, costUsd, error: lastError };
     }
   }
 

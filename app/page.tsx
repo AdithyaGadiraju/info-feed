@@ -41,13 +41,16 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       />
     );
   } catch (err) {
-    // A paused Supabase project is the common case here; a stack trace on a
-    // reading surface helps nobody.
+    // The message stays generic and the real error goes to the server log. A
+    // database error's text can carry connection details, and this page is the
+    // only place an internal exception could reach an HTTP response.
+    console.error('[feed] could not load the first page:', err);
     return (
       <main>
         <h1 className="text-lg font-semibold tracking-tight text-body">info-feed</h1>
         <p className="mt-6 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-muted">
-          Could not reach the database: {err instanceof Error ? err.message : 'unknown error'}
+          Could not reach the database. If the Supabase project has been idle for a week it is
+          paused and needs resuming; the server log has the details.
         </p>
       </main>
     );

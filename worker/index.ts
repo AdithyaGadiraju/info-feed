@@ -21,7 +21,13 @@ import { postFooter, postHeader } from '../lib/digest/discord';
 const INGEST_CRON = '*/30 * * * *';
 const DIGEST_CRON = '0 8,18 * * *';
 const PRUNE_CRON = '15 4 * * *';
-/** Enrich early when the queue builds up rather than waiting out the interval (ADR 0001). */
+/**
+ * Enrich a lane early when ITS OWN queue builds up, rather than waiting out the
+ * interval (ADR 0001). Deliberately per lane, not a total across lanes: every call
+ * carries about 14k tokens of fixed CLI overhead, so sweeping all five lanes
+ * because one of them is busy means paying that overhead for lanes holding a
+ * couple of items.
+ */
 const PENDING_TRIGGER = 15;
 const BODY_RETENTION_DAYS = 30;
 
@@ -62,16 +68,23 @@ async function runIngest(): Promise<void> {
       `${result.bodiesFetched} bodies` +
       (result.failed.length ? `, failed: ${result.failed.map((f) => f.source).join(', ')}` : ''),
   );
-  // Enrich straight away when the backlog is big enough, so the feed does not sit
-  // on an hour of unclustered items.
-  if ((await countPendingItems()) >= PENDING_TRIGGER) {
-    await once('enrich', runEnrich);
+  // Enrich straight away when some lane's backlog is big enough, so the feed does
+  // not sit on an hour of unclustered items.
+  const busy = await Promise.all(lanes.map((l) => countPendingItems(l)));
+  if (busy.some((n) => n >= PENDING_TRIGGER)) {
+    await once('enrich', () => runEnrich(PENDING_TRIGGER));
   }
 }
 
-async function runEnrich(): Promise<void> {
+/**
+ * `minPending` is 1 on the scheduled tick, which drains everything, and
+ * PENDING_TRIGGER on the backlog trigger, which should only touch the lane that
+ * actually filled up.
+ */
+async function runEnrich(minPending = 1): Promise<void> {
   let cost = 0;
   for (const lane of lanes) {
+    if ((await countPendingItems(lane)) < minPending) continue;
     const result = await enrichLane(lane);
     cost += result.costUsd;
     if (result.created || result.updated || result.dropped) {
@@ -111,7 +124,7 @@ async function main(): Promise<void> {
 
   const tasks: ScheduledTask[] = [
     cron.schedule(INGEST_CRON, () => void once('ingest', runIngest), { timezone: tz }),
-    cron.schedule(enrichCron, () => void once('enrich', runEnrich), { timezone: tz }),
+    cron.schedule(enrichCron, () => void once('enrich', () => runEnrich()), { timezone: tz }),
     cron.schedule(DIGEST_CRON, () => void once('digest', runDigest), { timezone: tz }),
     cron.schedule(
       PRUNE_CRON,

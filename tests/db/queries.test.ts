@@ -135,6 +135,66 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
     }
   });
 
+
+  it('lets a pre-filtered item back into the queue once its engagement grows', async () => {
+    // A Hacker News story first seen at 12 points is stored excluded. When it
+    // reaches the front page the upsert must return it to the pending queue,
+    // otherwise the stories that grow are exactly the ones never enriched.
+    const low = item('grower', { engagement: { points: 12 }, storyId: EXCLUDED_STORY_ID });
+    const res = await upsertItems([low]);
+    const id = res.inserted[0].id;
+
+    const sql = db();
+    const [before] = await sql`SELECT story_id::int AS story_id FROM items WHERE id = ${id}`;
+    expect(Number(before.story_id)).toBe(EXCLUDED_STORY_ID);
+
+    // Same item, now passing the pre-filter: storyId omitted means "pending".
+    await upsertItems([item('grower', { engagement: { points: 600 } })]);
+    const [after] = await sql`SELECT story_id::int AS story_id, engagement FROM items WHERE id = ${id}`;
+    expect(after.story_id).toBeNull();
+    expect((after.engagement as { points: number }).points).toBe(600);
+  });
+
+  it('does not detach an item that is already attached to a story', async () => {
+    const res = await upsertItems([item('attached')]);
+    const id = res.inserted[0].id;
+    const sql = db();
+    const [story] = await sql`
+      INSERT INTO stories (lane, title, summary_short, score)
+      VALUES ('ai', '__test_queries__ attachment guard', 'x', 3) RETURNING id::int AS id`;
+    await sql`UPDATE items SET story_id = ${Number(story.id)} WHERE id = ${id}`;
+
+    // Re-ingesting the same item, even as a pre-filter reject, must not orphan it.
+    await upsertItems([item('attached', { storyId: EXCLUDED_STORY_ID })]);
+    const [after] = await sql`SELECT story_id::int AS story_id FROM items WHERE id = ${id}`;
+    expect(Number(after.story_id)).toBe(Number(story.id));
+  });
+
+  it('pages through stories that share an updated_at without skipping any', async () => {
+    // applyAssignments writes a whole chunk inside one transaction, so every story
+    // it creates shares a single now(). A cursor built from a millisecond-truncated
+    // JS Date excluded the rest of the tie group, silently losing them from the feed.
+    const sql = db();
+    await sql`
+      INSERT INTO stories (lane, title, summary_short, score)
+      SELECT 'ai', '__test_queries__ tie ' || g, 'tied', 5
+      FROM generate_series(1, 5) g`;
+
+    const seen: number[] = [];
+    let cursor = null as Awaited<ReturnType<typeof getFeedPage>>['nextCursor'];
+    for (let page = 0; page < 12; page += 1) {
+      const res = await getFeedPage({ lanes: ['ai'], minScore: 5, limit: 2, cursor });
+      seen.push(...res.stories.map((st) => st.id));
+      cursor = res.nextCursor;
+      if (!cursor) break;
+    }
+
+    const [{ n }] = await sql`
+      SELECT count(*)::int AS n FROM stories WHERE lane = 'ai' AND score >= 5`;
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(seen.length).toBe(Number(n));
+  });
+
   it('writes price snapshots and run rows', async () => {
     expect(await insertPriceSnapshots([{ symbol: '__TESTSYM__', price: 1.5 }])).toBe(1);
     const runId = await startRun('__test_queries__');

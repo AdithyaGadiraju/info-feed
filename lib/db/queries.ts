@@ -105,7 +105,17 @@ export async function upsertItems(items: NewItem[]): Promise<UpsertResult> {
       url        = EXCLUDED.url,
       body       = COALESCE(EXCLUDED.body, items.body),
       author     = COALESCE(EXCLUDED.author, items.author),
-      engagement = EXCLUDED.engagement
+      engagement = EXCLUDED.engagement,
+      -- An excluded item must be able to come back. A Hacker News story first
+      -- seen at 12 points is stored with the -1 sentinel; ninety minutes later it
+      -- is on the front page at 600. Without this, the refreshed engagement was
+      -- written but story_id stayed -1 forever, so the stories that grow -- the
+      -- ones that matter most -- were exactly the ones silently never enriched.
+      -- EXCLUDED.story_id is what the pre-filter decided THIS run: NULL means it
+      -- passes now. Rows already attached to a story (> 0) are never touched.
+      story_id   = CASE WHEN items.story_id = ${EXCLUDED_STORY_ID}
+                        THEN EXCLUDED.story_id
+                        ELSE items.story_id END
     RETURNING id::int AS id, source, external_id, url, (body IS NOT NULL) AS has_body,
               (xmax = 0) AS was_inserted
   `;
@@ -228,7 +238,12 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
         const s = a.newStory;
         const [row] = await tx`
           INSERT INTO stories (lane, title, summary_short, summary_detail, score)
-          VALUES (${s.lane ?? lane}, ${s.title}, ${s.summaryShort}, ${s.summaryDetail}, ${s.score})
+          -- The run's lane wins over whatever the model put in newStory.lane.
+          -- A story stamped with another lane would render under that chip, post
+          -- to that lane's mirror webhook, and never come back from
+          -- getOpenStories for this lane, so later items about the same event
+          -- would spawn a duplicate story instead of joining it.
+          VALUES (${lane}, ${s.title}, ${s.summaryShort}, ${s.summaryDetail}, ${s.score})
           RETURNING id::int AS id
         `;
         storyId = Number(row.id);
@@ -247,13 +262,13 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
               summary_detail = CASE WHEN ${a.updatedDetail !== undefined}
                                     THEN ${a.updatedDetail ?? null} ELSE summary_detail END,
               score          = COALESCE(${a.updatedScore ?? null}, score),
-              updated_at     = now()
+              updated_at     = date_trunc('milliseconds', now())
             WHERE id = ${storyId}
           `;
           out.updated += res.count;
         } else if (a.itemIds.length > 0) {
           // New sources on an unchanged story still count as movement.
-          const res = await tx`UPDATE stories SET updated_at = now() WHERE id = ${storyId}`;
+          const res = await tx`UPDATE stories SET updated_at = date_trunc('milliseconds', now()) WHERE id = ${storyId}`;
           out.updated += res.count;
         }
       }
@@ -374,6 +389,8 @@ export async function getFeedPage(opts: {
     ...toStory(r),
     itemCount: Number(r.item_count ?? 0),
   }));
+  // Exact because stories.updated_at is stored at millisecond precision, which is
+  // all a JavaScript Date can carry. See the column comment in schema.sql.
   const last = stories[stories.length - 1];
   const nextCursor =
     rows.length > limit && last ? { updatedAt: last.updatedAt.toISOString(), id: last.id } : null;
