@@ -74,3 +74,13 @@ docs/adr/
 - `worker/index.ts` — scheduler only. Imports `ingest`, `enrich`, `digest` run functions; contains no source or LLM logic.
 - `app/*`, `middleware.ts` — web only; reads via `lib/db/queries.ts`.
 - Disjoint from ADRs 0002–0004 except through `lib/db/queries.ts` and `lib/sources/types.ts`.
+
+## Deviations
+- **`items.story_id` is a plain `bigint`, not a foreign key.** ADR 0002 requires a
+  sentinel value of `-1` for items the engagement pre-filter rejects, and ADR 0003
+  reuses it for items the model drops as noise. A real `REFERENCES stories(id)`
+  constraint cannot hold `-1`. The column is indexed and the three states are
+  documented in `schema.sql`: `NULL` pending, `-1` excluded, `> 0` assigned.
+- **`FEED_BASE_URL` added to the env list.** ADR 0004 uses `${FEED_BASE_URL}/story/{id}`
+  for digest links but ADR 0001's env list omitted the variable. Defaults to
+  `http://localhost:3005`.
