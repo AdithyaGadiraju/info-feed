@@ -1,4 +1,4 @@
-// prompt version: 1
+// prompt version: 2
 //
 // Bump the number above whenever the system prompt text below changes. ADR 0003
 // calls the prompt "the product": a version marker is what lets a run logged in
@@ -11,7 +11,7 @@
 import type { Item, Lane, Story } from '../db/types';
 
 /** Mirrors the `prompt version` comment above; logged with every run so a story can be traced to its wording. */
-export const PROMPT_VERSION = 1;
+export const PROMPT_VERSION = 2;
 
 /** ADR 0003: bodies are capped so a 60-item batch has a bounded input cost. */
 export const MAX_BODY_CHARS = 2000;
@@ -84,7 +84,10 @@ HARD RULES
    list below. Never invent an id.
 3. "lane" on a new story is the lane named in the batch header.
 4. Every new story must have at least one item behind it.
-5. summaryDetail and score move together. Score 3, 4 or 5 means summaryDetail is a
+5. Every "newStory" object carries all five keys every time: lane, title,
+   summaryShort, summaryDetail and score. "score" is the one most often left out
+   by mistake; an assignment without it is rejected and the whole batch is retried.
+6. summaryDetail and score move together. Score 3, 4 or 5 means summaryDetail is a
    non-empty markdown string. Score 1 or 2 means summaryDetail is exactly null.
    There is no third option: a scored-3 story with a null detail is rejected, and so
    is a scored-2 story with a detail.
