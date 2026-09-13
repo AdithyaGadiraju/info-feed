@@ -15,9 +15,10 @@ Constraints that came out of the review:
 - Live feed was chosen over static pages, so a running web server is required.
 
 ## Decision
-One npm package, one `node_modules`, two entrypoints:
+One npm package, one `node_modules`, three entrypoints:
 
-1. **Worker** (`worker/index.ts`, run with `tsx`, managed by whatever process manager the box already uses). In-process scheduler (`node-cron`) with three jobs:
+0. **Digest on command** (`npm run digest`, `scripts/digest.ts`, run with `tsx`). The primary way the system is used: no machine is assumed to be always on. Runs the full pipeline once, lane by lane, and exits: for each lane, ingest that lane's sources → enrich pending items for that lane → post that lane's Discord message immediately. Must work on macOS and Windows (Node, `better-sqlite3` prebuilt binaries, `claude` CLI on PATH, no shell-specific scripts, `cross-env` for env vars). Optional flags: `--lane <name>` and `--since <hours>` (default: since the last digest, capped at 72 h).
+1. **Worker** (`worker/index.ts`, run with `tsx`, optional, for when a machine is running). In-process scheduler (`node-cron`) with three jobs:
    - `ingest` every 30 min: every source runs in parallel with a per-source timeout, new items are upserted into `items` (unique on `(source, external_id)`), article bodies are fetched and extracted for link items.
    - `enrich` every 60 min, or immediately when pending items ≥ 15: one Claude call clusters pending items into stories and writes summaries and scores (ADR 0003).
    - `digest` at 08:00 and 18:00 `TZ` (default `Australia/Sydney`, confirm): posts high-score stories to Discord (ADR 0004).
@@ -66,6 +67,7 @@ docs/adr/
 - `package.json`, `tsconfig.json`, `next.config.ts`, `.env.example`, `.gitignore` — scaffolding, owned by whoever bootstraps the repo. Everyone else depends on it being present first.
 - `lib/db/*` — schema and typed query helpers. **Interface:** the exported functions in `lib/db/queries.ts` and types in `lib/db/types.ts` are the contract every other module uses. Build this first; sources, enrich, digest and web all consume it and do not write raw SQL.
 - `config/sources.ts` — lane and source config. Shape defined alongside `lib/sources/types.ts`.
+- `scripts/digest.ts` — on-command pipeline. Imports the same `ingest`, `enrich`, `digest` run functions and calls them per lane; no source or LLM logic.
 - `worker/index.ts` — scheduler only. Imports `ingest`, `enrich`, `digest` run functions; contains no source or LLM logic.
 - `app/*`, `middleware.ts` — web only; reads via `lib/db/queries.ts`.
 - Disjoint from ADRs 0002–0004 except through `lib/db/queries.ts` and `lib/sources/types.ts`.

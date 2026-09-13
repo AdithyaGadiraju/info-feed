@@ -9,7 +9,8 @@ Gadi wants both a pushed summary and a place to scroll and expand. Delivery chan
 
 ## Decision
 **Digest** (`lib/digest/run.ts`, `lib/digest/discord.ts`):
-- Runs at 08:00 and 18:00 `TZ`. Selects stories with `score ≥ 4` where `digested_at IS NULL OR updated_at > digested_at`, grouped by lane, ordered by score then `updated_at`, capped at 8 per lane.
+- Runs on command (`npm run digest`, ADR 0001) or from the worker at 08:00 and 18:00 `TZ`. Selects stories with `score ≥ 4` where `digested_at IS NULL OR updated_at > digested_at`, grouped by lane, ordered by score then `updated_at`, capped at 8 per lane.
+- **Streams per lane.** `npm run digest` posts a lane's message as soon as that lane is ingested and enriched, then moves to the next lane, so reading can start while the rest is still running. Lane order: ai, markets, betting, gamedev, games (configurable). The first message of a run is a one-line header (`Digest · 13 Sep 14:05 · 5 lanes`) so the start of a run is visible; a final line reports lanes with nothing new and any lane that failed.
 - One webhook message per lane with content (skip empty lanes). Embed per lane: title `AI · 12 Sep AM`, one line per story: score marker, bold title, `summary_short`, link to `${FEED_BASE_URL}/story/{id}`. Webhook URL: `DISCORD_WEBHOOK_URL` (main channel, always receives every lane). If `DISCORD_WEBHOOK_URL_<LANE>` is set, the same lane message is additionally posted to that channel (mirror, not override). One Discord server, one webhook per channel.
 - Marks `digested_at` only after a 2xx; writes a `digests` row and a `runs` row. Respects Discord's 2000 char / 10 embed limits by splitting.
 
