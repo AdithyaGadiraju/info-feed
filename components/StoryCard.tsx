@@ -2,7 +2,7 @@
 
 import { useCallback, useId, useState } from 'react';
 import Markdown from 'react-markdown';
-import type { Engagement, Lane, StoryWithCount, StoryWithItems } from '@/lib/db/types';
+import { LANE_LABELS, type Engagement, type Lane, type StoryWithCount, type StoryWithItems } from '@/lib/db/types';
 
 /**
  * JSON has no Date. Anything that arrives over `/api/feed` comes back with ISO
@@ -43,6 +43,7 @@ export function reviveStoryWithItems(r: WireStoryWithItems): StoryWithItems {
 
 const LANE_CLASS: Record<Lane, string> = {
   ai: 'text-lane-ai',
+  ai_dev: 'text-lane-ai_dev',
   markets: 'text-lane-markets',
   betting: 'text-lane-betting',
   gamedev: 'text-lane-gamedev',
@@ -164,7 +165,7 @@ export default function StoryCard({ story, initialDetail = null, defaultExpanded
         className="block w-full cursor-pointer px-4 py-3.5 text-left transition-colors hover:bg-surface-2"
       >
         <div className="flex items-center gap-2 text-xs">
-          <span className={`font-semibold uppercase tracking-wider ${LANE_CLASS[story.lane]}`}>{story.lane}</span>
+          <span className={`font-semibold uppercase tracking-wider ${LANE_CLASS[story.lane]}`}>{LANE_LABELS[story.lane]}</span>
           <ScoreDots score={story.score} />
           <span className="ml-auto text-muted" suppressHydrationWarning>
             {relativeTime(story.updatedAt)}

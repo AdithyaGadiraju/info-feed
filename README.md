@@ -1,11 +1,18 @@
 # info-feed
 
-A personal news digest across five lanes: **ai**, **markets**, **betting**, **gamedev**, **games**.
+A personal news digest across six lanes: **ai** (AI News), **ai_dev** (AI Dev), **markets**, **betting**, **gamedev**, **games**.
 
 It ingests free sources (RSS, Reddit, Hacker News, Steam, crypto prices, and optionally
 Twitter), uses one Claude call per lane to cluster the raw items into stories with a
 short summary and a 1–5 score, posts the good ones to Discord lane by lane, and serves
 a live scrolling feed behind basic auth.
+
+The two AI lanes split by audience. **ai** (labelled "AI News") is the industry: labs,
+models, research, policy. **ai_dev** (labelled "AI Dev") is for building with agentic
+tools: Claude Code, Codex and Cursor changelogs, the blogs where techniques like context,
+harness, loop and goal engineering get coined, and the trade press covering AI tooling
+for game dev, 3D and animation. Lane ids never change once data exists; display names
+live in `LANE_LABELS` in `lib/db/types.ts`.
 
 Design decisions live in `docs/adr/`. Read those before changing anything structural;
 each one records what was rejected and why.
@@ -77,7 +84,7 @@ Optional:
 
 | Variable | Notes |
 | --- | --- |
-| `DISCORD_WEBHOOK_URL_<LANE>` | Mirrors that lane to a second channel **in addition to** the main one, never instead of it. `<LANE>` is `AI`, `MARKETS`, `BETTING`, `GAMEDEV` or `GAMES`. |
+| `DISCORD_WEBHOOK_URL_<LANE>` | Mirrors that lane to a second channel **in addition to** the main one, never instead of it. `<LANE>` is `AI`, `AI_DEV`, `MARKETS`, `BETTING`, `GAMEDEV` or `GAMES`. |
 | `FEED_BASE_URL` | Where the story links in Discord point. Defaults to `http://localhost:3005`. |
 | `PORT` | Port for `next start`. |
 | `RETTIWT_API_KEY` | Twitter. Leave empty to skip it entirely, which is the v1 default. |
@@ -112,7 +119,8 @@ raise the score threshold and tighten the rubric rather than changing the UI.
 
 Measured on the first real run, 2026-09-14: one `npm run digest -- --since 24`
 covering a full day of content. 369 items ingested, 234 removed by the engagement
-pre-filter, 139 sent to the model across 5 lanes in 7 calls.
+pre-filter, 139 sent to the model across 5 lanes in 7 calls. The `ai_dev` lane was added
+afterwards, so expect roughly one more call per digest on top of these figures.
 
 | | tokens | priced as Sonnet 5 on the API |
 | --- | --- | --- |

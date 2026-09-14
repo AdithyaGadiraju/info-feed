@@ -9,16 +9,45 @@ import type { SourcesConfig } from '../lib/sources/types';
 export const sourcesConfig: SourcesConfig = {
   lanes: LANES,
   // Digest posting order. ai first because it is the lane Gadi reads first.
-  laneOrder: ['ai', 'markets', 'betting', 'gamedev', 'games'],
+  laneOrder: ['ai', 'ai_dev', 'markets', 'betting', 'gamedev', 'games'],
 
   feeds: [
-    // ai
+    // ai (AI News): labs, models, research, the industry.
     { lane: 'ai', name: 'OpenAI', url: 'https://openai.com/news/rss.xml' },
-    // Anthropic publishes no RSS feed any more; every documented path 404s as of
+    // Anthropic publishes no first-party RSS feed; every documented path 404s as of
     // 2026-09-13. Anthropic news reaches the ai lane via Hacker News and r/LocalLLaMA
-    // instead. See the Deviations section of ADR 0002.
+    // instead. See the Deviations section of ADR 0002. (The engineering blog is in
+    // ai_dev via a community bridge, and the Claude Code changelog has a real feed.)
     { lane: 'ai', name: 'Google DeepMind', url: 'https://deepmind.google/blog/rss.xml' },
     { lane: 'ai', name: 'Hugging Face', url: 'https://huggingface.co/blog/feed.xml' },
+    // ai_dev (AI Dev): building with agentic tools. Three kinds of source, verified
+    // live on 2026-09-14: tool changelogs (what shipped), the people who coin and
+    // spread the techniques (context -> harness -> loop -> goal engineering all
+    // started on these blogs), and the gamedev/3D side where AI tooling lands.
+    // -- tool changelogs
+    { lane: 'ai_dev', name: 'Claude Code changelog', url: 'https://code.claude.com/docs/en/changelog/rss.xml' },
+    // Third-party RSSHub bridge; anthropic.com has no feed. Items carry no pubDate,
+    // so they surface with fetch time and dedupe on link. Drop it if the bridge dies.
+    { lane: 'ai_dev', name: 'Anthropic Engineering', url: 'https://rsshub.bestblogs.dev/anthropic/engineering' },
+    { lane: 'ai_dev', name: 'Codex changelog', url: 'https://developers.openai.com/codex/changelog/rss.xml' },
+    { lane: 'ai_dev', name: 'Cursor changelog', url: 'https://cursor.com/changelog/rss.xml' },
+    { lane: 'ai_dev', name: 'GitHub Changelog (Copilot)', url: 'https://github.blog/changelog/label/copilot/feed/' },
+    // -- techniques and discourse
+    { lane: 'ai_dev', name: 'Simon Willison (AI-assisted programming)', url: 'https://simonwillison.net/tags/ai-assisted-programming.atom' },
+    { lane: 'ai_dev', name: 'Addy Osmani', url: 'https://addyosmani.com/rss.xml' },
+    { lane: 'ai_dev', name: 'Geoffrey Huntley', url: 'https://ghuntley.com/rss/' },
+    { lane: 'ai_dev', name: 'martinfowler.com', url: 'https://martinfowler.com/feed.atom' },
+    { lane: 'ai_dev', name: 'Kent Beck', url: 'https://newsletter.kentbeck.com/feed' },
+    { lane: 'ai_dev', name: 'Latent Space', url: 'https://www.latent.space/feed' },
+    { lane: 'ai_dev', name: 'The Pragmatic Engineer', url: 'https://newsletter.pragmaticengineer.com/feed' },
+    { lane: 'ai_dev', name: 'Every: Chain of Thought', url: 'https://every.to/chain-of-thought/feed' },
+    { lane: 'ai_dev', name: 'Lobsters (ai)', url: 'https://lobste.rs/t/ai.rss' },
+    // -- AI tooling for game dev, 3D and animation. The vendors themselves (Runway,
+    // Luma, Kling, Wonder Dynamics, Meshy, Move.ai, Cascadeur) publish no feeds, so
+    // the trade press and r/aigamedev carry that news.
+    { lane: 'ai_dev', name: 'CG Channel', url: 'https://www.cgchannel.com/feed/' },
+    { lane: 'ai_dev', name: 'AI and Games', url: 'https://www.aiandgames.com/feed' },
+    { lane: 'ai_dev', name: 'fxguide', url: 'https://www.fxguide.com/feed/' },
     // gamedev
     { lane: 'gamedev', name: 'Godot', url: 'https://godotengine.org/rss.xml' },
     { lane: 'gamedev', name: 'Unreal Engine', url: 'https://www.unrealengine.com/en-US/rss' },
@@ -47,6 +76,11 @@ export const sourcesConfig: SourcesConfig = {
     { lane: 'ai', sub: 'MachineLearning' },
     { lane: 'ai', sub: 'LocalLLaMA' },
     { lane: 'ai', sub: 'artificial' },
+    { lane: 'ai_dev', sub: 'ClaudeCode' },
+    { lane: 'ai_dev', sub: 'codex' },
+    { lane: 'ai_dev', sub: 'cursor' },
+    { lane: 'ai_dev', sub: 'ChatGPTCoding' },
+    { lane: 'ai_dev', sub: 'aigamedev' },
     { lane: 'gamedev', sub: 'gamedev' },
     { lane: 'gamedev', sub: 'godot' },
     { lane: 'gamedev', sub: 'unrealengine' },
@@ -63,6 +97,7 @@ export const sourcesConfig: SourcesConfig = {
 
   hnQueries: [
     { lane: 'ai', query: 'LLM OR "language model" OR Anthropic OR OpenAI' },
+    { lane: 'ai_dev', query: '"Claude Code" OR Codex OR Cursor OR Copilot OR "coding agent" OR "agentic coding" OR MCP' },
     { lane: 'gamedev', query: 'Godot OR "game engine" OR Blender OR "Unreal Engine"' },
     { lane: 'games', query: 'video game release' },
     { lane: 'markets', query: 'bitcoin OR ethereum OR crypto market' },
@@ -72,6 +107,9 @@ export const sourcesConfig: SourcesConfig = {
   // Routes HN front-page stories into a lane. First match wins; anything unmatched
   // is dropped rather than guessed at, so the front page cannot flood one lane.
   hnFrontPageLaneKeywords: [
+    // ai_dev sits before ai on purpose: its keywords are the specific ones, and
+    // "claude" / "openai" in the ai rule would otherwise swallow every tooling story.
+    { lane: 'ai_dev', keywords: ['claude code', 'codex', 'cursor', 'copilot', 'coding agent', 'agentic', 'mcp', 'vibe cod', 'context engineering', 'loop engineering', 'goal engineering', 'harness engineering', 'spec-driven'] },
     { lane: 'ai', keywords: ['llm', 'gpt', 'claude', 'openai', 'anthropic', 'deepmind', 'neural', 'machine learning', 'transformer', 'diffusion', 'ai '] },
     { lane: 'gamedev', keywords: ['godot', 'unreal', 'unity', 'blender', 'game engine', 'shader', 'rendering', 'gamedev'] },
     { lane: 'games', keywords: ['video game', 'steam', 'nintendo', 'playstation', 'xbox', 'speedrun'] },

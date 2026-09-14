@@ -1,4 +1,4 @@
-// prompt version: 2
+// prompt version: 3
 //
 // Bump the number above whenever the system prompt text below changes. ADR 0003
 // calls the prompt "the product": a version marker is what lets a run logged in
@@ -11,13 +11,14 @@
 import type { Item, Lane, Story } from '../db/types';
 
 /** Mirrors the `prompt version` comment above; logged with every run so a story can be traced to its wording. */
-export const PROMPT_VERSION = 2;
+export const PROMPT_VERSION = 3;
 
 /** ADR 0003: bodies are capped so a 60-item batch has a bounded input cost. */
 export const MAX_BODY_CHARS = 2000;
 
 const LANE_NOTES: Record<Lane, string> = {
-  ai: 'frontier models, labs, research, agents, AI tooling and infrastructure',
+  ai: 'AI news: frontier models, labs, research, policy, funding, infrastructure',
+  ai_dev: 'building with AI as a developer: agentic coding tools (Claude Code, Codex, Cursor), new workflows and techniques (prompt, context, loop and goal engineering), MCP and agent frameworks, releases and changelogs, and AI products that speed up game dev, 3D and animation work',
   markets: 'crypto and macro markets, prices, regulation, exchanges',
   betting: 'sports betting, odds, bookmakers, betting models and datasets, MMA and UFC markets',
   gamedev: 'game engines, tools, the craft and the business of making games',
@@ -39,6 +40,7 @@ the main job.
 
 THE LANES
 - ai: ${LANE_NOTES.ai}
+- ai_dev: ${LANE_NOTES.ai_dev}
 - markets: ${LANE_NOTES.markets}
 - betting: ${LANE_NOTES.betting}
 - gamedev: ${LANE_NOTES.gamedev}

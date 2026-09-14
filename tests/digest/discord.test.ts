@@ -80,7 +80,7 @@ describe('buildLaneEmbed', () => {
 
     expect(messages).toHaveLength(1);
     const embed = messages[0].embeds![0];
-    expect(embed.title).toMatch(/^AI · 13 Sep (AM|PM)$/);
+    expect(embed.title).toMatch(/^AI NEWS · 13 Sep (AM|PM)$/);
     expect(embed.description.length).toBeLessThan(DISCORD_LIMITS.embedDescription);
     for (const s of stories) {
       expect(embed.description).toContain(s.title);

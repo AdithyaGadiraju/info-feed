@@ -29,7 +29,7 @@ describe('hn source (live)', () => {
     expect(new Set(ids).size).toBe(ids.length);
   }, 30_000);
 
-  it('only ever assigns one of the five known lanes', async () => {
+  it('only ever assigns one of the known lanes', async () => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const items = await hn.fetch({ since, config: sourcesConfig });
 

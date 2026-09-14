@@ -9,7 +9,7 @@ import { ingest, type IngestResult } from '../lib/sources/index';
 
 const USAGE = `Usage: npm run ingest:once -- [--lane <name>]... [--since <hours>]
 
-  --lane   ai | markets | betting | gamedev | games. Repeatable, or comma
+  --lane   ai | ai_dev | markets | betting | gamedev | games. Repeatable, or comma
            separated. Omit for every lane.
   --since  How many hours back to ingest. Default 24.`;
 

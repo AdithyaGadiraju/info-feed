@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'info-feed',
-  description: 'Personal multi-lane feed: ai, markets, betting, gamedev, games.',
+  description: 'Personal multi-lane feed: ai, ai_dev, markets, betting, gamedev, games.',
 };
 
 export const viewport: Viewport = {

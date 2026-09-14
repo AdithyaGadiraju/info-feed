@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import StoryCard, { reviveStory, type WireStoryWithCount } from '@/components/StoryCard';
-import { LANES, type FeedCursor, type Lane, type StoryWithCount } from '@/lib/db/types';
+import { LANES, LANE_LABELS, type FeedCursor, type Lane, type StoryWithCount } from '@/lib/db/types';
 
 const PAGE_SIZE = 30;
 const SCORES = [1, 2, 3, 4, 5] as const;
@@ -145,7 +145,7 @@ export default function Feed({
 
   const toggleLane = (lane: Lane) => {
     // Chips are a single-select "All | lane" switch: on a phone, a multi-select
-    // of five lanes is fiddly and nothing in the ADR asks for combinations.
+    // of six lanes is fiddly and nothing in the ADR asks for combinations.
     applyFilters(lanes.length === 1 && lanes[0] === lane ? [] : [lane], minScore);
   };
 
@@ -169,7 +169,7 @@ export default function Feed({
           </button>
           {LANES.map((lane) => (
             <button key={lane} type="button" className={chip(lanes.includes(lane))} onClick={() => toggleLane(lane)}>
-              {lane}
+              {LANE_LABELS[lane]}
             </button>
           ))}
         </div>

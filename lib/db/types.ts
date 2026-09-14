@@ -1,6 +1,20 @@
-/** The five lanes. Order here is the digest posting order (ADR 0004). */
-export const LANES = ['ai', 'markets', 'betting', 'gamedev', 'games'] as const;
+/** The six lanes. Order here is the digest posting order (ADR 0004). */
+export const LANES = ['ai', 'ai_dev', 'markets', 'betting', 'gamedev', 'games'] as const;
 export type Lane = (typeof LANES)[number];
+
+/**
+ * Human labels for the web chips, story badges and Discord embed titles. The lane
+ * id is also a Postgres value, a URL token, a CSS token and an env-var suffix, so
+ * it never changes once data exists; this map is the only place a lane is renamed.
+ */
+export const LANE_LABELS: Record<Lane, string> = {
+  ai: 'AI News',
+  ai_dev: 'AI Dev',
+  markets: 'Markets',
+  betting: 'Betting',
+  gamedev: 'Gamedev',
+  games: 'Games',
+};
 
 export function isLane(v: string): v is Lane {
   return (LANES as readonly string[]).includes(v);

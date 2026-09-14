@@ -5,7 +5,7 @@
  * to Gadi's real channel.
  */
 import { env } from '../env';
-import type { Lane, Story } from '../db/types';
+import { LANE_LABELS, type Lane, type Story } from '../db/types';
 
 export interface DiscordEmbed {
   title: string;
@@ -119,7 +119,7 @@ export function buildLaneEmbed(
 ): DiscordMessagePayload[] {
   if (stories.length === 0) return [];
 
-  const titleBase = `${lane.toUpperCase()} · ${laneDateLabel(now, tz)}`;
+  const titleBase = `${LANE_LABELS[lane].toUpperCase()} · ${laneDateLabel(now, tz)}`;
   const descriptions = packDescriptions(stories.map((s) => storyLine(s, baseUrl)));
 
   return descriptions.map((description, i) => ({
