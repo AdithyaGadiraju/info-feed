@@ -4,7 +4,7 @@
  * only knows how to do one lane at a time, and writes the `runs` row for it.
  */
 import { finishRun, getDigestStories, recordDigest, startRun } from '../db/queries';
-import type { Lane, Story } from '../db/types';
+import type { Lane, StoryWithLink } from '../db/types';
 import { env } from '../env';
 import { postLane, type PostResult } from './discord';
 
@@ -16,7 +16,7 @@ export interface DigestLaneResult {
 
 export interface DigestLaneDeps {
   /** Injectable so tests can force a non-2xx without a fake network layer. */
-  poster?: (lane: Lane, stories: Story[]) => Promise<PostResult>;
+  poster?: (lane: Lane, stories: StoryWithLink[]) => Promise<PostResult>;
   now?: Date;
 }
 

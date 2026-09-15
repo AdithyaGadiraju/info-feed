@@ -125,6 +125,59 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
     expect(Number(dropped.story_id)).toBe(EXCLUDED_STORY_ID);
   });
 
+  it('links a story to the article behind it, not to the thread about it', async () => {
+    // The HN thread is the earliest of the three, so it wins on recency alone —
+    // it must still lose to a real article, and the article must beat the repost
+    // that followed it an hour later.
+    const { inserted } = await upsertItems([
+      item('link-thread', {
+        url: 'https://news.ycombinator.com/item?id=44444444',
+        publishedAt: new Date('2026-09-10T00:00:00Z'),
+      }),
+      item('link-article', {
+        url: 'https://example.invalid/the-article',
+        publishedAt: new Date('2026-09-10T02:00:00Z'),
+      }),
+      item('link-repost', {
+        url: 'https://example.invalid/the-repost',
+        publishedAt: new Date('2026-09-10T03:00:00Z'),
+      }),
+    ]);
+    expect(inserted).toHaveLength(3);
+
+    await applyAssignments('ai', {
+      assignments: [
+        {
+          itemIds: inserted.map((i) => i.id),
+          newStory: {
+            lane: 'ai',
+            title: '__test_queries__ linked story',
+            summaryShort: 'One story, three items, one article.',
+            summaryDetail: null,
+            score: 5,
+          },
+        },
+      ],
+      dropped: [],
+    });
+
+    const sql = db();
+    const [row] = await sql`
+      SELECT id::int AS id FROM stories WHERE title = '__test_queries__ linked story'
+    `;
+    const storyId = Number(row.id);
+
+    const full = await getStoryWithItems(storyId);
+    expect(full?.primaryUrl).toBe('https://example.invalid/the-article');
+
+    // The feed builds the link in a different statement (one lateral, aggregated),
+    // so it gets its own assertion. The story was just written, so it sorts first.
+    const page = await getFeedPage({ lanes: ['ai'], minScore: 5, limit: 5 });
+    expect(page.stories.find((s) => s.id === storyId)?.primaryUrl).toBe(
+      'https://example.invalid/the-article',
+    );
+  });
+
   it('pages the feed on a keyset cursor without repeats', async () => {
     const page1 = await getFeedPage({ minScore: 1, limit: 1 });
     expect(page1.stories.length).toBeLessThanOrEqual(1);

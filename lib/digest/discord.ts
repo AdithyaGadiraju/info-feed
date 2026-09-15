@@ -5,7 +5,7 @@
  * to Gadi's real channel.
  */
 import { env } from '../env';
-import { LANE_LABELS, type Lane, type Story } from '../db/types';
+import { LANE_LABELS, type Lane, type StoryWithLink } from '../db/types';
 
 export interface DiscordEmbed {
   title: string;
@@ -55,29 +55,40 @@ function scoreMarker(score: number): string {
 const ELLIPSIS = '…';
 
 /**
+ * Both links a story has: the article it is about, then the feed permalink. The
+ * article comes first because it is what the digest is for — the permalink is the
+ * way back into the feed, not the destination. A story with no items attached has
+ * no article link, so only the permalink is emitted.
+ */
+function storyLinks(story: StoryWithLink, baseUrl: string): string {
+  const permalink = `${baseUrl}/story/${story.id}`;
+  return story.primaryUrl ? `${story.primaryUrl}\n${permalink}` : permalink;
+}
+
+/**
  * One story as one packable line. Nothing caps `summary_short` on the way in (the
  * enrichment validator caps only the title), and `packDescriptions` can only split
  * between lines — so a single runaway summary would be emitted intact, rejected by
  * Discord with a 400, and rebuilt identically on every later run, wedging the lane
  * forever. Truncating here is the only place that can make that impossible. The
- * link is never the part that gets cut: a clipped summary still reaches the story,
- * a clipped URL reaches nothing.
+ * links are never the part that gets cut: a clipped summary still reaches the
+ * article, a clipped URL reaches nothing.
  */
-function storyLine(story: Story, baseUrl: string): string {
-  const link = `${baseUrl}/story/${story.id}`;
+function storyLine(story: StoryWithLink, baseUrl: string): string {
+  const links = storyLinks(story, baseUrl);
   const head = `${scoreMarker(story.score)} **${story.title}**`;
-  const line = `${head}\n${story.summaryShort}\n${link}`;
+  const line = `${head}\n${story.summaryShort}\n${links}`;
   if (line.length <= DISCORD_LIMITS.embedDescription) return line;
 
   const NEWLINES = 2;
   const room =
-    DISCORD_LIMITS.embedDescription - (head.length + link.length + NEWLINES + ELLIPSIS.length);
-  if (room > 0) return `${head}\n${story.summaryShort.slice(0, room)}${ELLIPSIS}\n${link}`;
+    DISCORD_LIMITS.embedDescription - (head.length + links.length + NEWLINES + ELLIPSIS.length);
+  if (room > 0) return `${head}\n${story.summaryShort.slice(0, room)}${ELLIPSIS}\n${links}`;
 
-  // Pathological: the title alone overruns the embed. Keep the link and whatever
-  // of the heading fits in front of it.
-  const headRoom = DISCORD_LIMITS.embedDescription - (link.length + 1 + ELLIPSIS.length);
-  return `${head.slice(0, Math.max(0, headRoom))}${ELLIPSIS}\n${link}`;
+  // Pathological: the title alone overruns the embed. Keep the links and whatever
+  // of the heading fits in front of them.
+  const headRoom = DISCORD_LIMITS.embedDescription - (links.length + 1 + ELLIPSIS.length);
+  return `${head.slice(0, Math.max(0, headRoom))}${ELLIPSIS}\n${links}`;
 }
 
 /**
@@ -112,7 +123,7 @@ function packDescriptions(lines: string[]): string[] {
  */
 export function buildLaneEmbed(
   lane: Lane,
-  stories: Story[],
+  stories: StoryWithLink[],
   baseUrl: string,
   now: Date = new Date(),
   tz = 'Australia/Sydney',
@@ -196,7 +207,7 @@ export interface PostLaneOptions {
  */
 export async function postLane(
   lane: Lane,
-  stories: Story[],
+  stories: StoryWithLink[],
   opts: PostLaneOptions = {},
 ): Promise<PostResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;

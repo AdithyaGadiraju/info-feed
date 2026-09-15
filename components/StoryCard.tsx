@@ -61,6 +61,15 @@ export function relativeTime(d: Date, now = Date.now()): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+/** Display label for the article link: the bare host, so the card shows where it goes. */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
 function compact(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
 }
@@ -178,6 +187,19 @@ export default function StoryCard({ story, initialDetail = null, defaultExpanded
           <span className="ml-2 text-line">{expanded ? '▲' : '▼'}</span>
         </p>
       </button>
+
+      {story.primaryUrl ? (
+        <a
+          href={story.primaryUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 border-t border-line px-4 py-2 text-xs text-muted transition-colors hover:text-accent"
+        >
+          <span className="font-medium">Read the original</span>
+          <span className="truncate text-line">{hostOf(story.primaryUrl) ?? story.primaryUrl}</span>
+          <span className="ml-auto">↗</span>
+        </a>
+      ) : null}
 
       {expanded ? (
         <div id={panelId} className="border-t border-line bg-surface-2/40 px-4 py-3.5 text-sm">

@@ -146,14 +146,18 @@ export function mapEntries(entries: RedditEntry[], spec: SubredditSpec, ctx: Sou
     const outbound = extractOutboundLink(contentHtml, permalink);
     let body = toPlainBody(contentHtml).slice(0, BODY_CAP);
     if (outbound) {
-      body = `${body}\n\nLink: ${outbound}`.slice(0, BODY_CAP);
+      body = `${body}\n\nDiscussion: ${permalink}`.slice(0, BODY_CAP);
     }
 
     items.push({
       source: 'reddit',
       externalId: id,
       laneHint: spec.lane,
-      url: permalink,
+      // The article a link post points at, same rule as hn.ts: `url` is what the
+      // post is about, falling back to the thread when the thread IS the content.
+      // The feed and the digest surface this URL, so burying the article in the
+      // body text left every reddit-sourced story linking at reddit instead.
+      url: outbound ?? permalink,
       title: entry.title ?? '(untitled)',
       body: body.length > 0 ? body : undefined,
       author: entry.author,

@@ -5,7 +5,7 @@
  * Ids are cast to `int` in every select list because `postgres.js` returns bigint
  * columns as strings by default and a personal feed will never exceed 2^31 rows.
  */
-import type { Row } from 'postgres';
+import type { Row, Sql } from 'postgres';
 import { db } from './client';
 import {
   EXCLUDED_STORY_ID,
@@ -20,6 +20,7 @@ import {
   type Story,
   type StoryWithCount,
   type StoryWithItems,
+  type StoryWithLink,
 } from './types';
 
 // ---- row mappers ----
@@ -41,6 +42,10 @@ function toItem(r: Row): Item {
   };
 }
 
+function toStoryWithLink(r: Row): StoryWithLink {
+  return { ...toStory(r), primaryUrl: (r.primary_url as string | null) ?? null };
+}
+
 function toStory(r: Row): Story {
   return {
     id: Number(r.id),
@@ -53,6 +58,25 @@ function toStory(r: Row): Story {
     updatedAt: r.updated_at as Date,
     digestedAt: (r.digested_at as Date | null) ?? null,
   };
+}
+
+/**
+ * Hosts whose URLs are the conversation about an article, not the article. HN and
+ * Reddit items usually carry the outbound link already; these are the ones that
+ * do not (a text post, a tweet), and they only become a story's link when no item
+ * offers a real source.
+ */
+const DISCUSSION_HOST_RE =
+  '^https?://([a-z0-9-]+\\.)*(news\\.ycombinator\\.com|reddit\\.com|redd\\.it|x\\.com|twitter\\.com|t\\.co)(/|$)';
+
+/**
+ * Ranks the items behind a story so the first one is the link to show: a real
+ * article ahead of a discussion thread, then the earliest published, which is the
+ * outlet that broke it rather than whoever reposted it. `id` only breaks ties.
+ * Expects the items table to be aliased `i`.
+ */
+function bestLinkFirst(sql: Sql) {
+  return sql`(i.url ~* ${DISCUSSION_HOST_RE}), i.published_at ASC, i.id ASC`;
 }
 
 // ---- items ----
@@ -298,11 +322,17 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
  * Digest selection (ADR 0004): score >= 4, never digested or changed since the
  * last digest, best first, capped per lane.
  */
-export async function getDigestStories(lane: Lane, minScore = 4, limit = 8): Promise<Story[]> {
+export async function getDigestStories(
+  lane: Lane,
+  minScore = 4,
+  limit = 8,
+): Promise<StoryWithLink[]> {
   const sql = db();
   const rows = await sql`
     SELECT id::int AS id, lane, title, summary_short, summary_detail, score,
-           first_seen_at, updated_at, digested_at
+           first_seen_at, updated_at, digested_at,
+           (SELECT i.url FROM items i WHERE i.story_id = stories.id
+             ORDER BY ${bestLinkFirst(sql)} LIMIT 1) AS primary_url
     FROM stories
     WHERE lane = ${lane}
       AND score >= ${minScore}
@@ -310,7 +340,7 @@ export async function getDigestStories(lane: Lane, minScore = 4, limit = 8): Pro
     ORDER BY score DESC, updated_at DESC
     LIMIT ${limit}
   `;
-  return rows.map(toStory);
+  return rows.map(toStoryWithLink);
 }
 
 /**
@@ -368,10 +398,14 @@ export async function getFeedPage(opts: {
 
   const rows = await sql`
     SELECT s.id::int AS id, s.lane, s.title, s.summary_short, s.summary_detail, s.score,
-           s.first_seen_at, s.updated_at, s.digested_at, cnt.item_count
+           s.first_seen_at, s.updated_at, s.digested_at, cnt.item_count, cnt.primary_url
     FROM stories s
     LEFT JOIN LATERAL (
-      SELECT count(*)::int AS item_count FROM items i WHERE i.story_id = s.id
+      -- One pass over the story's items for both the count and the link, ordered
+      -- inside the aggregate so the article wins over the thread about it.
+      SELECT count(*)::int AS item_count,
+             (array_agg(i.url ORDER BY ${bestLinkFirst(sql)}))[1] AS primary_url
+      FROM items i WHERE i.story_id = s.id
     ) cnt ON true
     WHERE s.score >= ${minScore}
       ${lanes ? sql`AND s.lane = ANY(${sql.array(lanes)}::text[])` : sql``}
@@ -386,7 +420,7 @@ export async function getFeedPage(opts: {
 
   const page = rows.slice(0, limit);
   const stories: StoryWithCount[] = page.map((r) => ({
-    ...toStory(r),
+    ...toStoryWithLink(r),
     itemCount: Number(r.item_count ?? 0),
   }));
   // Exact because stories.updated_at is stored at millisecond precision, which is
@@ -403,7 +437,9 @@ export async function getStoryWithItems(id: number): Promise<StoryWithItems | nu
   const sql = db();
   const [row] = await sql`
     SELECT id::int AS id, lane, title, summary_short, summary_detail, score,
-           first_seen_at, updated_at, digested_at
+           first_seen_at, updated_at, digested_at,
+           (SELECT i.url FROM items i WHERE i.story_id = stories.id
+             ORDER BY ${bestLinkFirst(sql)} LIMIT 1) AS primary_url
     FROM stories WHERE id = ${id}
   `;
   if (!row) return null;
@@ -416,7 +452,7 @@ export async function getStoryWithItems(id: number): Promise<StoryWithItems | nu
   `;
 
   return {
-    ...toStory(row),
+    ...toStoryWithLink(row),
     items: items.map((r) => ({
       id: Number(r.id),
       source: r.source as string,

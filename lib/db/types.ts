@@ -75,13 +75,22 @@ export interface Story {
   digestedAt: Date | null;
 }
 
+/**
+ * A story plus the link to the article behind it: the URL of the best item
+ * attached to the story (ranking in `lib/db/queries.ts`). Null only while a
+ * story has no items at all, so every consumer treats the link as optional.
+ */
+export interface StoryWithLink extends Story {
+  primaryUrl: string | null;
+}
+
 /** A story plus the count of items behind it, for feed cards. */
-export interface StoryWithCount extends Story {
+export interface StoryWithCount extends StoryWithLink {
   itemCount: number;
 }
 
 /** A story plus its sources, for the expanded card and the permalink page. */
-export interface StoryWithItems extends Story {
+export interface StoryWithItems extends StoryWithLink {
   items: Array<Pick<Item, 'id' | 'source' | 'url' | 'title' | 'author' | 'engagement' | 'publishedAt'>>;
 }
 

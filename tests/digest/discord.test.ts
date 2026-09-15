@@ -4,7 +4,7 @@
  * ever leaves the process. No live Discord traffic from this file, ever.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { Story } from '../../lib/db/types';
+import type { StoryWithLink } from '../../lib/db/types';
 
 const mockEnv = vi.hoisted(() => ({
   discordWebhook: 'https://discord.test/main' as string | undefined,
@@ -42,9 +42,10 @@ const { buildLaneEmbed, postLane, DISCORD_LIMITS, NOT_SENT_STATUS } = await impo
 );
 const { digestLane } = await import('../../lib/digest/run');
 
-function story(overrides: Partial<Story> = {}): Story {
+function story(overrides: Partial<StoryWithLink> = {}): StoryWithLink {
   return {
     id: 1,
+    primaryUrl: 'https://anthropic.test/blog/new-thing',
     lane: 'ai',
     title: 'Anthropic ships a new thing',
     summaryShort: 'A short summary of the thing.',
@@ -71,9 +72,9 @@ beforeEach(() => {
 describe('buildLaneEmbed', () => {
   it('formats a small lane as a single message with links and titles', () => {
     const stories = [
-      story({ id: 1, title: 'Story One' }),
-      story({ id: 2, title: 'Story Two' }),
-      story({ id: 3, title: 'Story Three' }),
+      story({ id: 1, title: 'Story One', primaryUrl: 'https://one.test/a' }),
+      story({ id: 2, title: 'Story Two', primaryUrl: 'https://two.test/b' }),
+      story({ id: 3, title: 'Story Three', primaryUrl: 'https://three.test/c' }),
     ];
 
     const messages = buildLaneEmbed('ai', stories, BASE_URL, NOW, 'Australia/Sydney');
@@ -85,7 +86,26 @@ describe('buildLaneEmbed', () => {
     for (const s of stories) {
       expect(embed.description).toContain(s.title);
       expect(embed.description).toContain(`${BASE_URL}/story/${s.id}`);
+      // The article is the point of the digest; the permalink is the way back.
+      expect(embed.description).toContain(s.primaryUrl!);
+      expect(embed.description.indexOf(s.primaryUrl!)).toBeLessThan(
+        embed.description.indexOf(`${BASE_URL}/story/${s.id}`),
+      );
     }
+  });
+
+  it('falls back to the permalink alone for a story with no article link', () => {
+    const messages = buildLaneEmbed(
+      'ai',
+      [story({ id: 9, primaryUrl: null })],
+      BASE_URL,
+      NOW,
+      'Australia/Sydney',
+    );
+
+    const description = messages[0].embeds![0].description;
+    expect(description).toContain(`${BASE_URL}/story/9`);
+    expect(description).not.toContain('null');
   });
 
   it('produces no messages for an empty lane', () => {
@@ -105,8 +125,9 @@ describe('buildLaneEmbed', () => {
     expect(embed.title.length + embed.description.length).toBeLessThanOrEqual(
       DISCORD_LIMITS.totalPerMessage,
     );
-    // Truncation must be visible, and must never cost the reader the way out.
+    // Truncation must be visible, and must never cost the reader either link.
     expect(embed.description).toContain('…');
+    expect(embed.description).toContain(runaway.primaryUrl!);
     expect(embed.description).toContain(`${BASE_URL}/story/42`);
     expect(embed.description.endsWith(`${BASE_URL}/story/42`)).toBe(true);
     expect(embed.description).toContain(runaway.title);
@@ -127,7 +148,10 @@ describe('buildLaneEmbed', () => {
       }
     }
     const allText = messages.map((m) => m.embeds!.map((e) => e.description).join('\n')).join('\n');
-    for (const s of stories) expect(allText).toContain(`${BASE_URL}/story/${s.id}`);
+    for (const s of stories) {
+      expect(allText).toContain(`${BASE_URL}/story/${s.id}`);
+      expect(allText).toContain(s.primaryUrl!);
+    }
   });
 
   it('splits a lane of many long stories into multiple messages, each within every limit', () => {

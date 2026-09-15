@@ -154,9 +154,11 @@ describe('reddit entry mapping (fixture, no network)', () => {
     expect(item.publishedAt.toISOString()).toBe('2026-09-13T00:00:00.000Z');
   });
 
-  it('surfaces the outbound article URL for a link post', () => {
+  it('links a link post at the article, keeping the thread in the body', () => {
     const [item] = mapEntries([ATOM_ENTRIES[1]], spec, ctx);
-    expect(item.body).toContain('https://example.com/article');
+    // `url` is what the feed and the digest link to, so it has to be the article.
+    expect(item.url).toBe('https://example.com/article');
+    expect(item.body).toContain('/r/MachineLearning/comments/def/a_link_post/');
   });
 
   it('never invents engagement numbers, because a fake count would corrupt the pre-filter', () => {
