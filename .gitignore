@@ -7,3 +7,5 @@ next-env.d.ts
 coverage/
 .DS_Store
 .env.local
+.claude/worktrees/
+.claude/settings.local.json
