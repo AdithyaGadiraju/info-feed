@@ -13,9 +13,9 @@
     "enrich:once": "tsx scripts/enrich-once.ts",
     "ingest:once": "tsx scripts/ingest-once.ts",
     "worker": "tsx worker/index.ts",
-    "dev": "next dev",
+    "dev": "node scripts/next.mjs dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/next.mjs start",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
