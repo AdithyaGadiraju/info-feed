@@ -2,10 +2,10 @@
  * The contract between the model's answer and the database write path (ADR 0003).
  *
  * Two things live here. `ENRICH_JSON_SCHEMA` is what the SDK transport hands to
- * `output_config.format`; the CLI transport has no schema flag, so the prompt asks
- * for the same shape in prose and this file's validator is the only thing standing
- * between a hallucinated id and `applyAssignments`. Treat the validator, not the
- * schema, as the safety net: it is the one that always runs.
+ * `output_config.format` and what the CLI transport passes to `--json-schema`, so
+ * both back ends are constrained by the same object. Treat the validator, not the
+ * schema, as the safety net: it is the one that always runs, and it is the only
+ * thing standing between a hallucinated id and `applyAssignments`.
  *
  * No schema library is installed on purpose — one object literal plus one hand-written
  * validator is less code than a dependency, and the validator has to encode rules a

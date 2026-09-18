@@ -17,14 +17,36 @@ import {
 import type { Item, Lane, Story } from '../db/types';
 import { buildSystemPrompt, buildUserPrompt, PROMPT_VERSION } from './prompt';
 import { extractJsonObject, validateEnrichResult } from './schema';
-import { addUsage, complete, EMPTY_USAGE, formatUsage, sumUsage, type TokenUsage } from './transport';
+import {
+  addUsage,
+  CliTimeoutError,
+  complete,
+  EMPTY_USAGE,
+  formatUsage,
+  sumUsage,
+  type TokenUsage,
+} from './transport';
+import { env } from '../env';
 
 /** ADR 0003: one call per lane per run, chunked at 60 pending items. */
 export const CHUNK_SIZE = 60;
+/**
+ * The CLI transport gets a smaller chunk. The call's cost is output-bound, not
+ * input-bound: every story scored 3+ carries a 150-300 word detail, and a measured
+ * 6-item chunk produced 5 stories and ~4.9k output tokens in ~50s. Sixty items is
+ * roughly 50k tokens of generation, which no sane wall-clock ceiling clears. The
+ * API path streams under its own timeout and keeps the larger chunk.
+ */
+export const CLI_CHUNK_SIZE = 12;
 const OPEN_STORY_HOURS = 48;
 const OPEN_STORY_MAX = 150;
 /** Three attempts total per chunk: the call, then two retries (ADR 0003). */
 const MAX_ATTEMPTS = 3;
+
+/** The ceiling for this run's transport; `opts.chunkSize` may lower it, never raise it. */
+export function maxChunkSize(): number {
+  return env.llmTransport === 'cli' ? CLI_CHUNK_SIZE : CHUNK_SIZE;
+}
 
 export interface EnrichLaneResult {
   created: number;
@@ -82,6 +104,10 @@ async function enrichChunk(
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
       console.warn(`enrich ${lane}: attempt ${attempt} failed — ${lastError}`);
+      // A timeout is about the size of the batch, not about luck. Two more
+      // attempts on the same items would spend the ceiling twice over to fail
+      // the same way, so stop and leave them pending for a smaller next run.
+      if (err instanceof CliTimeoutError) break;
       continue;
     }
 
@@ -127,7 +153,8 @@ export async function enrichLane(
   lane: Lane,
   opts: EnrichLaneOptions = {},
 ): Promise<EnrichLaneResult> {
-  const chunkSize = Math.min(Math.max(opts.chunkSize ?? CHUNK_SIZE, 1), CHUNK_SIZE);
+  const ceiling = maxChunkSize();
+  const chunkSize = Math.min(Math.max(opts.chunkSize ?? ceiling, 1), ceiling);
   const cap = opts.maxItems ?? Number.POSITIVE_INFINITY;
 
   if (cap < 1) return emptyResult();

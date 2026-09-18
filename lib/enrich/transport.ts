@@ -50,8 +50,25 @@ export function formatUsage(u: TokenUsage, costUsd?: number): string {
   return `tokens in ${u.inputTokens} (cache write ${u.cacheCreationTokens}, cache read ${u.cacheReadTokens}) out ${u.outputTokens}${cost}`;
 }
 
-/** A stuck child would hold the worker's tick forever; 180s is far past a real call. */
-const CLI_TIMEOUT_MS = 180_000;
+/**
+ * A stuck child would hold the worker's tick forever. Measured: a 6-item chunk
+ * spends ~50s producing ~5k output tokens, because every story scored 3+ carries a
+ * 150-300 word detail. The ceiling has to clear a full chunk's generation, not a
+ * trivial call, or the timeout fires on healthy work.
+ */
+const CLI_TIMEOUT_MS = 300_000;
+
+/**
+ * Distinguishable because a timeout is not a transient fault: the same input will
+ * generate the same amount of text next time. Retrying it burns the whole ceiling
+ * again for a certain second failure, so `enrichChunk` stops on this one.
+ */
+export class CliTimeoutError extends Error {
+  constructor(ms: number) {
+    super(`claude CLI timed out after ${ms}ms`);
+    this.name = 'CliTimeoutError';
+  }
+}
 
 export function complete(system: string, user: string): Promise<CompletionResult> {
   return env.llmTransport === 'api' ? completeViaApi(system, user) : completeViaCli(system, user);
@@ -83,12 +100,21 @@ function n(v: unknown): number {
  *
  * The user prompt goes in on stdin because 60 items with 2000-char bodies is well
  * past the OS argv limit; as an argv argument this fails with E2BIG at ~40 items.
+ *
+ * `--json-schema` and `--effort` are the CLI's equivalents of the `output_config`
+ * the API path sets. Without the schema the model omits `newStory.score` often
+ * enough that a large share of calls were paid for twice: once for the rejected
+ * response, once for the retry.
  */
 export function completeViaCli(system: string, user: string): Promise<CompletionResult> {
   const args = [
     '-p',
     '--output-format',
     'json',
+    '--json-schema',
+    JSON.stringify(ENRICH_JSON_SCHEMA),
+    '--effort',
+    'low',
     '--model',
     env.llmModel,
     '--allowedTools',
@@ -114,7 +140,7 @@ export function completeViaCli(system: string, user: string): Promise<Completion
       if (settled) return;
       settled = true;
       child.kill('SIGKILL');
-      reject(new Error(`claude CLI timed out after ${CLI_TIMEOUT_MS}ms`));
+      reject(new CliTimeoutError(CLI_TIMEOUT_MS));
     }, CLI_TIMEOUT_MS);
 
     const finish = (err: Error | null, value?: CompletionResult): void => {
