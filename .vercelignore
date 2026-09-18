@@ -1,0 +1,7 @@
+# Only the Next app is deployed. The ingest/enrich/digest worker runs elsewhere
+# (README "Deploying to the VPS"); shipping it would only bloat the upload.
+worker/
+scripts/
+tests/
+docs/
+*.md
