@@ -1,4 +1,4 @@
-// prompt version: 3
+// prompt version: 4
 //
 // Bump the number above whenever the system prompt text below changes. ADR 0003
 // calls the prompt "the product": a version marker is what lets a run logged in
@@ -11,7 +11,7 @@
 import type { Item, Lane, Story } from '../db/types';
 
 /** Mirrors the `prompt version` comment above; logged with every run so a story can be traced to its wording. */
-export const PROMPT_VERSION = 3;
+export const PROMPT_VERSION = 4;
 
 /** ADR 0003: bodies are capped so a 60-item batch has a bounded input cost. */
 export const MAX_BODY_CHARS = 2000;
@@ -21,7 +21,8 @@ const LANE_NOTES: Record<Lane, string> = {
   ai_dev: 'building with AI as a developer: agentic coding tools (Claude Code, Codex, Cursor), new workflows and techniques (prompt, context, loop and goal engineering), MCP and agent frameworks, releases and changelogs, and AI products that speed up game dev, 3D and animation work',
   markets: 'crypto and macro markets, prices, regulation, exchanges',
   betting: 'sports betting, odds, bookmakers, betting models and datasets, MMA and UFC markets',
-  gamedev: 'game engines, tools, the craft and the business of making games',
+  gamedev:
+    'game engines, tools, the craft and the business of making games. Score engine news by what it changes: a major version, a new rendering, physics, networking or platform capability, a licensing or pricing change, or a new engine that is gaining real attention is 4 or 5; patch releases, bug-fix builds, quality-of-life editor tweaks and dev snapshots are 1 or 2',
   games: 'game releases, studios, storefronts, the games industry',
 };
 

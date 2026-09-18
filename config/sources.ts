@@ -49,9 +49,19 @@ export const sourcesConfig: SourcesConfig = {
     { lane: 'ai_dev', name: 'AI and Games', url: 'https://www.aiandgames.com/feed' },
     { lane: 'ai_dev', name: 'fxguide', url: 'https://www.fxguide.com/feed/' },
     // gamedev
+    // -- engine first-party blogs, verified live on 2026-09-18. The prompt scores
+    // patch and QOL releases as noise, so these can stay unfiltered. O3DE has no
+    // feed and CRYENGINE's stopped in 2024; GameFromScratch covers both.
     { lane: 'gamedev', name: 'Godot', url: 'https://godotengine.org/rss.xml' },
     { lane: 'gamedev', name: 'Unreal Engine', url: 'https://www.unrealengine.com/en-US/rss' },
     { lane: 'gamedev', name: 'Unity', url: 'https://blog.unity.com/feed' },
+    { lane: 'gamedev', name: 'Bevy', url: 'https://bevyengine.org/atom.xml' },
+    { lane: 'gamedev', name: 'Defold', url: 'https://defold.com/feed.xml' },
+    { lane: 'gamedev', name: 'Stride', url: 'https://www.stride3d.net/feed.xml' },
+    { lane: 'gamedev', name: 'Flax Engine', url: 'https://flaxengine.com/feed/' },
+    { lane: 'gamedev', name: 'GameMaker', url: 'https://gamemaker.io/en/blog/rss' },
+    // -- engine news across the field, and where new engines first show up.
+    { lane: 'gamedev', name: 'GameFromScratch', url: 'https://gamefromscratch.com/feed/' },
     { lane: 'gamedev', name: 'Blender', url: 'https://www.blender.org/feed/' },
     { lane: 'gamedev', name: '80.lv', url: 'https://80.lv/feed/' },
     { lane: 'gamedev', name: 'Game Developer', url: 'https://www.gamedeveloper.com/rss.xml' },
@@ -83,6 +93,7 @@ export const sourcesConfig: SourcesConfig = {
     { lane: 'ai_dev', sub: 'aigamedev' },
     { lane: 'gamedev', sub: 'gamedev' },
     { lane: 'gamedev', sub: 'godot' },
+    { lane: 'gamedev', sub: 'gameenginedevs' },
     { lane: 'gamedev', sub: 'unrealengine' },
     { lane: 'gamedev', sub: 'blender' },
     { lane: 'games', sub: 'Games' },
@@ -98,7 +109,7 @@ export const sourcesConfig: SourcesConfig = {
   hnQueries: [
     { lane: 'ai', query: 'LLM OR "language model" OR Anthropic OR OpenAI' },
     { lane: 'ai_dev', query: '"Claude Code" OR Codex OR Cursor OR Copilot OR "coding agent" OR "agentic coding" OR MCP' },
-    { lane: 'gamedev', query: 'Godot OR "game engine" OR Blender OR "Unreal Engine"' },
+    { lane: 'gamedev', query: 'Godot OR "game engine" OR Blender OR "Unreal Engine" OR Unity OR Bevy OR O3DE OR Defold' },
     { lane: 'games', query: 'video game release' },
     { lane: 'markets', query: 'bitcoin OR ethereum OR crypto market' },
     { lane: 'betting', query: 'sports betting OR prediction market OR betting model' },
@@ -111,7 +122,7 @@ export const sourcesConfig: SourcesConfig = {
     // "claude" / "openai" in the ai rule would otherwise swallow every tooling story.
     { lane: 'ai_dev', keywords: ['claude code', 'codex', 'cursor', 'copilot', 'coding agent', 'agentic', 'mcp', 'vibe cod', 'context engineering', 'loop engineering', 'goal engineering', 'harness engineering', 'spec-driven'] },
     { lane: 'ai', keywords: ['llm', 'gpt', 'claude', 'openai', 'anthropic', 'deepmind', 'neural', 'machine learning', 'transformer', 'diffusion', 'ai '] },
-    { lane: 'gamedev', keywords: ['godot', 'unreal', 'unity', 'blender', 'game engine', 'shader', 'rendering', 'gamedev'] },
+    { lane: 'gamedev', keywords: ['godot', 'unreal', 'unity', 'bevy', 'o3de', 'defold', 'blender', 'game engine', 'shader', 'rendering', 'gamedev'] },
     { lane: 'games', keywords: ['video game', 'steam', 'nintendo', 'playstation', 'xbox', 'speedrun'] },
     { lane: 'markets', keywords: ['bitcoin', 'ethereum', 'crypto', 'stock market', 'fed ', 'inflation', 'nasdaq'] },
     { lane: 'betting', keywords: ['betting', 'sportsbook', 'prediction market', 'odds', 'kelly criterion', 'ufc', 'mma'] },
