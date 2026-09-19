@@ -1,4 +1,4 @@
-// prompt version: 4
+// prompt version: 5
 //
 // Bump the number above whenever the system prompt text below changes. ADR 0003
 // calls the prompt "the product": a version marker is what lets a run logged in
@@ -11,13 +11,14 @@
 import type { Item, Lane, Story } from '../db/types';
 
 /** Mirrors the `prompt version` comment above; logged with every run so a story can be traced to its wording. */
-export const PROMPT_VERSION = 4;
+export const PROMPT_VERSION = 5;
 
 /** ADR 0003: bodies are capped so a 60-item batch has a bounded input cost. */
 export const MAX_BODY_CHARS = 2000;
 
 const LANE_NOTES: Record<Lane, string> = {
-  ai: 'AI news: frontier models, labs, research, policy, funding, infrastructure',
+  ai:
+    "AI news: frontier models, labs, research, policy, funding, infrastructure, and benchmarks and leaderboards (Arena, SWE-bench, ARC-AGI, Humanity's Last Exam, Epoch AI and similar). Score benchmark news by what it shows: a model taking #1 on a major leaderboard, the first results for a newly released frontier model, or a new benchmark that labs start reporting is 4 or 5; small rank shuffles among older models and self-reported numbers with no new model behind them are 2 or 3",
   ai_dev: 'building with AI as a developer: agentic coding tools (Claude Code, Codex, Cursor), new workflows and techniques (prompt, context, loop and goal engineering), MCP and agent frameworks, releases and changelogs, and AI products that speed up game dev, 3D and animation work',
   markets: 'crypto and macro markets, prices, regulation, exchanges',
   betting: 'sports betting, odds, bookmakers, betting models and datasets, MMA and UFC markets',
@@ -108,10 +109,12 @@ SUMMARIES
 
 SCORE RUBRIC
 5 = major: a frontier model release, an engine major version, a market-moving
-    event, a AAA launch, a new public betting-model method or dataset, a major MMA
-    card or fight-market shift.
+    event, a new #1 on a major AI leaderboard (Arena, SWE-bench, ARC-AGI), a AAA
+    launch, a new public betting-model method or dataset, a major MMA card or
+    fight-market shift.
 4 = notable: a real development a reader in this lane would want to know today —
-    a significant release, funding round, outage, rule change or result.
+    a significant release, funding round, outage, rule change or result,
+    including benchmark or leaderboard results for a recent frontier model.
 3 = worth a line: real but minor, or interesting without consequence.
 2 = noise: routine, speculative, or already well known.
 1 = noise: no information.

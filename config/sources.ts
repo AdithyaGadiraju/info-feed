@@ -20,6 +20,10 @@ export const sourcesConfig: SourcesConfig = {
     // ai_dev via a community bridge, and the Claude Code changelog has a real feed.)
     { lane: 'ai', name: 'Google DeepMind', url: 'https://deepmind.google/blog/rss.xml' },
     { lane: 'ai', name: 'Hugging Face', url: 'https://huggingface.co/blog/feed.xml' },
+    // -- benchmarks and leaderboards, verified live on 2026-09-19. Arena (lmarena)
+    // publishes no feed and posts results on X, so r/singularity and HN carry them.
+    { lane: 'ai', name: 'Epoch AI', url: 'https://epochai.substack.com/feed' },
+    { lane: 'ai', name: 'Simon Willison (evals)', url: 'https://simonwillison.net/tags/evals.atom' },
     // ai_dev (AI Dev): building with agentic tools. Three kinds of source, verified
     // live on 2026-09-14: tool changelogs (what shipped), the people who coin and
     // spread the techniques (context -> harness -> loop -> goal engineering all
@@ -86,6 +90,7 @@ export const sourcesConfig: SourcesConfig = {
     { lane: 'ai', sub: 'MachineLearning' },
     { lane: 'ai', sub: 'LocalLLaMA' },
     { lane: 'ai', sub: 'artificial' },
+    { lane: 'ai', sub: 'singularity' },
     { lane: 'ai_dev', sub: 'ClaudeCode' },
     { lane: 'ai_dev', sub: 'codex' },
     { lane: 'ai_dev', sub: 'cursor' },
@@ -121,7 +126,7 @@ export const sourcesConfig: SourcesConfig = {
     // ai_dev sits before ai on purpose: its keywords are the specific ones, and
     // "claude" / "openai" in the ai rule would otherwise swallow every tooling story.
     { lane: 'ai_dev', keywords: ['claude code', 'codex', 'cursor', 'copilot', 'coding agent', 'agentic', 'mcp', 'vibe cod', 'context engineering', 'loop engineering', 'goal engineering', 'harness engineering', 'spec-driven'] },
-    { lane: 'ai', keywords: ['llm', 'gpt', 'claude', 'openai', 'anthropic', 'deepmind', 'neural', 'machine learning', 'transformer', 'diffusion', 'ai '] },
+    { lane: 'ai', keywords: ['llm', 'gpt', 'claude', 'openai', 'anthropic', 'deepmind', 'neural', 'machine learning', 'transformer', 'diffusion', 'ai ', 'lmarena', 'arena.ai', 'swe-bench', 'arc-agi', 'terminal-bench', "humanity's last exam"] },
     { lane: 'gamedev', keywords: ['godot', 'unreal', 'unity', 'bevy', 'o3de', 'defold', 'blender', 'game engine', 'shader', 'rendering', 'gamedev'] },
     { lane: 'games', keywords: ['video game', 'steam', 'nintendo', 'playstation', 'xbox', 'speedrun'] },
     { lane: 'markets', keywords: ['bitcoin', 'ethereum', 'crypto', 'stock market', 'fed ', 'inflation', 'nasdaq'] },
