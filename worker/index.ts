@@ -87,9 +87,9 @@ async function runEnrich(minPending = 1): Promise<void> {
     if ((await countPendingItems(lane)) < minPending) continue;
     const result = await enrichLane(lane);
     cost += result.costUsd;
-    if (result.created || result.updated || result.dropped) {
+    if (result.created || result.updated || result.extended || result.dropped) {
       console.log(
-        `  enrich ${lane}: ${result.created} new, ${result.updated} updated, ${result.dropped} dropped`,
+        `  enrich ${lane}: ${result.created} new, ${result.updated} updated, ${result.extended} extended, ${result.dropped} dropped`,
       );
     }
   }

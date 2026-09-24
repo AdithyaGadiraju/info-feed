@@ -283,7 +283,19 @@ export async function getOpenStories(lanes: Lane | Lane[], hours = 48, max = 150
 
 export interface ApplyResult {
   created: number;
+  /**
+   * Stories whose summary or score the model revised: the material updates that
+   * docs/scoring.md and ADR 0003 mean by "updated".
+   */
   updated: number;
+  /**
+   * Stories that only gained items, summary and score untouched. Counted apart
+   * from `updated` because a run chunks a lane into several calls, and most of
+   * these are stories an earlier chunk of the same run created picking up more
+   * coverage in a later one. Folding them into `updated` made a quiet run read as
+   * if dozens of existing stories had been revised.
+   */
+  extended: number;
   attached: number;
   dropped: number;
 }
@@ -291,12 +303,16 @@ export interface ApplyResult {
 /**
  * The enrichment write path: one transaction per model response (ADR 0003).
  *
- * Only material updates bump `stories.updated_at`, because that column is what
- * makes the digest re-include a story and what orders the feed.
+ * Both material updates and attach-only assignments bump `stories.updated_at`.
+ * That column is what makes the digest re-include a story and what orders the
+ * feed, so a score-4+ story that was already posted is posted again when it
+ * merely gains coverage. ADR 0003 says only material updates should bump it; the
+ * attach-only bump also keeps a still-covered story inside getOpenStories' 48 h
+ * window, so changing it is a design decision, not a one-line fix.
  */
 export async function applyAssignments(lane: Lane, result: EnrichResult): Promise<ApplyResult> {
   const sql = db();
-  const out: ApplyResult = { created: 0, updated: 0, attached: 0, dropped: 0 };
+  const out: ApplyResult = { created: 0, updated: 0, extended: 0, attached: 0, dropped: 0 };
   const group = laneGroup(lane);
 
   await sql.begin(async (tx) => {
@@ -338,7 +354,7 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
         } else if (a.itemIds.length > 0) {
           // New sources on an unchanged story still count as movement.
           const res = await tx`UPDATE stories SET updated_at = date_trunc('milliseconds', now()) WHERE id = ${storyId}`;
-          out.updated += res.count;
+          out.extended += res.count;
         }
       }
 

@@ -153,6 +153,47 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
     expect(laneOf['__test_queries__ foreign lane']).toBe('ai');
   });
 
+  it('counts an attach-only assignment as extended, and a revision as updated', async () => {
+    const res = await upsertItems([item('x1'), item('x2'), item('x3')]);
+    const [x1, x2, x3] = res.inserted.map((r) => r.id);
+
+    await applyAssignments('ai', {
+      assignments: [
+        {
+          itemIds: [x1],
+          newStory: {
+            lane: 'ai',
+            title: '__test_queries__ extended story',
+            summaryShort: 'One item.',
+            summaryDetail: null,
+            score: 2,
+          },
+        },
+      ],
+      dropped: [],
+    });
+    const sql = db();
+    const [story] = await sql`
+      SELECT id::int AS id FROM stories WHERE title = '__test_queries__ extended story'
+    `;
+    const storyId = Number(story.id);
+
+    // More coverage of the same fact: not a material update.
+    const attachOnly = await applyAssignments('ai', {
+      assignments: [{ itemIds: [x2], storyId }],
+      dropped: [],
+    });
+    expect(attachOnly.updated).toBe(0);
+    expect(attachOnly.extended).toBe(1);
+
+    const revised = await applyAssignments('ai', {
+      assignments: [{ itemIds: [x3], storyId, updatedShort: 'Now two facts.' }],
+      dropped: [],
+    });
+    expect(revised.updated).toBe(1);
+    expect(revised.extended).toBe(0);
+  });
+
   it('links a story to the article behind it, not to the thread about it', async () => {
     // The HN thread is the earliest of the three, so it wins on recency alone —
     // it must still lose to a real article, and the article must beat the repost

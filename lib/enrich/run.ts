@@ -75,7 +75,10 @@ export function maxChunkSize(): number {
 
 export interface EnrichLaneResult {
   created: number;
+  /** Stories whose summary or score was revised (material updates only). */
   updated: number;
+  /** Stories that only gained items; see `ApplyResult.extended`. */
+  extended: number;
   dropped: number;
   /** One entry per model call, so a multi-chunk run can be read call by call. */
   usage: TokenUsage[];
@@ -89,7 +92,7 @@ export interface EnrichLaneOptions {
 }
 
 function emptyResult(): EnrichLaneResult {
-  return { created: 0, updated: 0, dropped: 0, usage: [], costUsd: 0 };
+  return { created: 0, updated: 0, extended: 0, dropped: 0, usage: [], costUsd: 0 };
 }
 
 /**
@@ -101,7 +104,11 @@ async function enrichChunk(
   items: Item[],
   stories: Story[],
 ): Promise<{ usage: TokenUsage[]; costUsd: number } & (
-  | { ok: true; applied: { created: number; updated: number; dropped: number }; leftover: number[] }
+  | {
+      ok: true;
+      applied: { created: number; updated: number; extended: number; dropped: number };
+      leftover: number[];
+    }
   | { ok: false; error: string }
 )> {
   const system = buildSystemPrompt();
@@ -159,7 +166,12 @@ async function enrichChunk(
         ok: true,
         usage,
         costUsd,
-        applied: { created: applied.created, updated: applied.updated, dropped: applied.dropped },
+        applied: {
+          created: applied.created,
+          updated: applied.updated,
+          extended: applied.extended,
+          dropped: applied.dropped,
+        },
         leftover: validated.leftover,
       };
     } catch (err) {
@@ -214,6 +226,7 @@ export async function enrichLane(
       itemsIn += items.length;
       out.created += chunk.applied.created;
       out.updated += chunk.applied.updated;
+      out.extended += chunk.applied.extended;
       out.dropped += chunk.applied.dropped;
       remaining -= items.length;
 
@@ -229,6 +242,7 @@ export async function enrichLane(
       calls: out.usage.length,
       storiesCreated: out.created,
       storiesUpdated: out.updated,
+      storiesExtended: out.extended,
       itemsDropped: out.dropped,
       inputTokens: total.inputTokens,
       outputTokens: total.outputTokens,
@@ -240,6 +254,7 @@ export async function enrichLane(
 
     console.log(
       `enrich ${lane}: ${itemsIn} items in, ${out.created} created, ${out.updated} updated, ` +
+        `${out.extended} gained sources only, ` +
         `${out.dropped} dropped, ${out.usage.length} call(s) | ${formatUsage(total, out.costUsd)}`,
     );
     if (error) console.error(`enrich ${lane}: FAILED — ${error} (items stay pending)`);
