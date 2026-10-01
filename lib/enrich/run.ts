@@ -42,6 +42,31 @@ const OPEN_STORY_HOURS = 48;
 const OPEN_STORY_MAX = 150;
 /** Three attempts total per chunk: the call, then two retries (ADR 0003). */
 const MAX_ATTEMPTS = 3;
+/** Attempts at opening a connection for the write, never at the write itself. */
+const WRITE_CONNECT_ATTEMPTS = 3;
+
+/**
+ * Runs the chunk's write, retrying only when the connection was never opened.
+ *
+ * The pool's idle timeout is shorter than a model call, so every write starts by
+ * connecting to the pooler, and that connect occasionally times out. postgres.js
+ * raises CONNECT_TIMEOUT before the connection is ready for its first statement, so
+ * BEGIN was never sent and nothing can have been committed. That is the one write
+ * error that is safe to retry. Anything else may have landed and is rethrown.
+ */
+export async function writeWithConnectRetry<T>(lane: Lane, write: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await write();
+    } catch (err) {
+      const neverConnected = (err as { code?: string } | null)?.code === 'CONNECT_TIMEOUT';
+      if (!neverConnected || attempt >= WRITE_CONNECT_ATTEMPTS) throw err;
+      console.warn(
+        `enrich ${lane}: write could not connect (attempt ${attempt} of ${WRITE_CONNECT_ATTEMPTS}), retrying`,
+      );
+    }
+  }
+}
 
 /** The ceiling for this run's transport; `opts.chunkSize` may lower it, never raise it. */
 export function maxChunkSize(): number {
@@ -124,10 +149,12 @@ async function enrichChunk(
       );
     }
 
-    // One attempt only. If this throws we report the chunk as failed and leave the
-    // items pending rather than risk writing the batch twice.
+    // One attempt only, unless the connection was never opened. If this throws we
+    // report the chunk as failed and leave the items pending rather than risk
+    // writing the batch twice.
     try {
-      const applied = await applyAssignments(lane, validated.value);
+      const value = validated.value;
+      const applied = await writeWithConnectRetry(lane, () => applyAssignments(lane, value));
       return {
         ok: true,
         usage,
