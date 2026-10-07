@@ -2,7 +2,16 @@
 
 import { useCallback, useId, useState } from 'react';
 import Markdown from 'react-markdown';
-import { LANE_LABELS, type Engagement, type Lane, type StoryWithCount, type StoryWithItems } from '@/lib/db/types';
+import {
+  LANE_LABELS,
+  VERDICT_LABELS,
+  type Engagement,
+  type Lane,
+  type StoryWithCount,
+  type StoryWithItems,
+  type Verdict,
+  type Verification,
+} from '@/lib/db/types';
 
 /**
  * JSON has no Date. Anything that arrives over `/api/feed` comes back with ISO
@@ -10,11 +19,18 @@ import { LANE_LABELS, type Engagement, type Lane, type StoryWithCount, type Stor
  * out and revived at the boundary instead of leaking `string | Date` unions into
  * every component below.
  */
-type WithIsoDates<T> = Omit<T, 'firstSeenAt' | 'updatedAt' | 'digestedAt'> & {
+type WireVerification = Omit<Verification, 'checkedAt'> & { checkedAt: string };
+
+type WithIsoDates<T> = Omit<T, 'firstSeenAt' | 'updatedAt' | 'digestedAt' | 'verification'> & {
   firstSeenAt: string;
   updatedAt: string;
   digestedAt: string | null;
+  verification: WireVerification | null;
 };
+
+function reviveVerification(v: WireVerification | null): Verification | null {
+  return v ? { ...v, checkedAt: new Date(v.checkedAt) } : null;
+}
 
 export type WireStoryWithCount = WithIsoDates<StoryWithCount>;
 
@@ -28,6 +44,7 @@ export function reviveStory(r: WireStoryWithCount): StoryWithCount {
     firstSeenAt: new Date(r.firstSeenAt),
     updatedAt: new Date(r.updatedAt),
     digestedAt: r.digestedAt ? new Date(r.digestedAt) : null,
+    verification: reviveVerification(r.verification),
   };
 }
 
@@ -37,6 +54,7 @@ export function reviveStoryWithItems(r: WireStoryWithItems): StoryWithItems {
     firstSeenAt: new Date(r.firstSeenAt),
     updatedAt: new Date(r.updatedAt),
     digestedAt: r.digestedAt ? new Date(r.digestedAt) : null,
+    verification: reviveVerification(r.verification),
     items: r.items.map((i) => ({ ...i, publishedAt: new Date(i.publishedAt) })),
   };
 }
@@ -88,6 +106,63 @@ function ScoreDots({ score }: { score: number }) {
       {'●'.repeat(score)}
       <span className="text-line">{'●'.repeat(Math.max(0, 5 - score))}</span>
     </span>
+  );
+}
+
+const VERDICT_CLASS: Record<Verdict, string> = {
+  confirmed: 'text-verdict-confirmed',
+  unconfirmed: 'text-verdict-unconfirmed',
+  disputed: 'text-verdict-disputed',
+  false: 'text-verdict-false',
+};
+
+/**
+ * A verdict is about the story as it stood when it was checked. Once the story
+ * has changed since, the verdict is shown muted and says so, until the next digest
+ * re-checks it.
+ */
+function isOutdated(story: { updatedAt: Date; verification: Verification | null }): boolean {
+  return story.verification !== null && story.verification.checkedAt < story.updatedAt;
+}
+
+function VerdictBadge({ verification, outdated }: { verification: Verification; outdated: boolean }) {
+  const label = VERDICT_LABELS[verification.verdict];
+  return (
+    <span
+      className={`font-semibold ${outdated ? 'text-muted' : VERDICT_CLASS[verification.verdict]}`}
+      title={outdated ? `${label} when checked, before the story last changed` : `fact-check: ${label}`}
+    >
+      {label}
+      {outdated ? ' (outdated)' : ''}
+    </span>
+  );
+}
+
+function FactCheck({ verification, outdated }: { verification: Verification; outdated: boolean }) {
+  return (
+    <div className="mb-3 border-b border-line pb-3">
+      <p className="text-xs text-muted">
+        <VerdictBadge verification={verification} outdated={outdated} /> · checked{' '}
+        <span suppressHydrationWarning>{relativeTime(verification.checkedAt)}</span>
+      </p>
+      <p className="mt-1 leading-relaxed text-body">{verification.note}</p>
+      {verification.sources.length > 0 ? (
+        <ul className="mt-1.5 space-y-0.5 text-xs">
+          {verification.sources.map((s) => (
+            <li key={s.url}>
+              <a
+                href={s.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-muted underline decoration-line underline-offset-2 hover:text-accent"
+              >
+                {s.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -163,6 +238,11 @@ export default function StoryCard({ story, initialDetail = null, defaultExpanded
   }, [expanded, detail, loading, story]);
 
   const sourceCount = detail ? detail.items.length : story.itemCount;
+  const verification = story.verification;
+  const outdated = isOutdated(story);
+  // The collapsed card carries the note only when it is a warning. A confirmed
+  // story needs no second line; a disputed one should not need a click.
+  const warn = verification !== null && !outdated && (verification.verdict === 'disputed' || verification.verdict === 'false');
 
   return (
     <article className="overflow-hidden rounded-xl border border-line bg-surface">
@@ -176,12 +256,16 @@ export default function StoryCard({ story, initialDetail = null, defaultExpanded
         <div className="flex items-center gap-2 text-xs">
           <span className={`font-semibold uppercase tracking-wider ${LANE_CLASS[story.lane]}`}>{LANE_LABELS[story.lane]}</span>
           <ScoreDots score={story.score} />
+          {verification ? <VerdictBadge verification={verification} outdated={outdated} /> : null}
           <span className="ml-auto text-muted" suppressHydrationWarning>
             {relativeTime(story.updatedAt)}
           </span>
         </div>
         <h2 className="mt-1.5 text-[15px] font-semibold leading-snug text-body">{story.title}</h2>
         <p className="mt-1 text-sm leading-relaxed text-muted">{story.summaryShort}</p>
+        {warn ? (
+          <p className={`mt-1 text-sm leading-relaxed ${VERDICT_CLASS[verification.verdict]}`}>{verification.note}</p>
+        ) : null}
         <p className="mt-2 text-xs text-muted">
           {sourceCount} {sourceCount === 1 ? 'source' : 'sources'}
           <span className="ml-2 text-line">{expanded ? '▲' : '▼'}</span>
@@ -203,6 +287,7 @@ export default function StoryCard({ story, initialDetail = null, defaultExpanded
 
       {expanded ? (
         <div id={panelId} className="border-t border-line bg-surface-2/40 px-4 py-3.5 text-sm">
+          {verification ? <FactCheck verification={verification} outdated={outdated} /> : null}
           {story.summaryDetail ? (
             <div className="md text-body">
               <Markdown

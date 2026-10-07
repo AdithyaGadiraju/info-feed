@@ -5,6 +5,10 @@
  * subscription, so enrichment costs rate-limit window rather than dollars. The
  * `api` path exists so the worker can move off this Mac later without the rest of
  * lib/enrich changing.
+ *
+ * Two callers share it: enrichment (no tools, the enrichment schema) and the
+ * fact-check in lib/verify (web search on, its own schema). The defaults are
+ * enrichment's, so that call is unchanged by the options below.
  */
 import { spawn } from 'node:child_process';
 import Anthropic from '@anthropic-ai/sdk';
@@ -58,6 +62,8 @@ export function formatUsage(u: TokenUsage, costUsd?: number): string {
  */
 const CLI_TIMEOUT_MS = 300_000;
 
+const WEB_TOOLS = 'WebSearch,WebFetch';
+
 /**
  * Distinguishable because a timeout is not a transient fault: the same input will
  * generate the same amount of text next time. Retrying it burns the whole ceiling
@@ -70,8 +76,47 @@ export class CliTimeoutError extends Error {
   }
 }
 
-export function complete(system: string, user: string): Promise<CompletionResult> {
-  return env.llmTransport === 'api' ? completeViaApi(system, user) : completeViaCli(system, user);
+export interface CompletionOptions {
+  /** JSON Schema the answer must match. Defaults to the enrichment schema. */
+  schema?: object;
+  /** Let the model search and read the web before it answers. */
+  webSearch?: boolean;
+  effort?: 'low' | 'medium' | 'high';
+  /** CLI only: how long the child may run before it is killed. */
+  timeoutMs?: number;
+}
+
+let inFlight = 0;
+const waiting: Array<() => void> = [];
+
+/**
+ * Caps concurrent model calls at `LLM_CONCURRENCY`, first come first served. A
+ * finishing call hands its slot straight to the next waiter instead of freeing it,
+ * so a call arriving in the same tick cannot take the slot and push the count over.
+ */
+async function withSlot<T>(work: () => Promise<T>): Promise<T> {
+  if (inFlight >= env.llmConcurrency) {
+    await new Promise<void>((resolve) => waiting.push(resolve));
+  } else {
+    inFlight += 1;
+  }
+  try {
+    return await work();
+  } finally {
+    const next = waiting.shift();
+    if (next) next();
+    else inFlight -= 1;
+  }
+}
+
+export function complete(
+  system: string,
+  user: string,
+  opts: CompletionOptions = {},
+): Promise<CompletionResult> {
+  return withSlot(() =>
+    env.llmTransport === 'api' ? completeViaApi(system, user, opts) : completeViaCli(system, user, opts),
+  );
 }
 
 // ---- cli ----
@@ -105,20 +150,30 @@ function n(v: unknown): number {
  * the API path sets. Without the schema the model omits `newStory.score` often
  * enough that a large share of calls were paid for twice: once for the rejected
  * response, once for the retry.
+ *
+ * With `webSearch` the session keeps exactly two tools, both read-only. `--tools`
+ * has to name WebFetch because `--restricted` removes it otherwise.
  */
-export function completeViaCli(system: string, user: string): Promise<CompletionResult> {
+export function completeViaCli(
+  system: string,
+  user: string,
+  opts: CompletionOptions = {},
+): Promise<CompletionResult> {
+  const timeoutMs = opts.timeoutMs ?? CLI_TIMEOUT_MS;
+  const tools = opts.webSearch
+    ? ['--tools', WEB_TOOLS, '--allowedTools', WEB_TOOLS]
+    : ['--allowedTools', ''];
   const args = [
     '-p',
     '--output-format',
     'json',
     '--json-schema',
-    JSON.stringify(ENRICH_JSON_SCHEMA),
+    JSON.stringify(opts.schema ?? ENRICH_JSON_SCHEMA),
     '--effort',
-    'low',
+    opts.effort ?? 'low',
     '--model',
     env.llmModel,
-    '--allowedTools',
-    '',
+    ...tools,
     '--strict-mcp-config',
     '--permission-mode',
     'dontAsk',
@@ -140,8 +195,8 @@ export function completeViaCli(system: string, user: string): Promise<Completion
       if (settled) return;
       settled = true;
       child.kill('SIGKILL');
-      reject(new CliTimeoutError(CLI_TIMEOUT_MS));
-    }, CLI_TIMEOUT_MS);
+      reject(new CliTimeoutError(timeoutMs));
+    }, timeoutMs);
 
     const finish = (err: Error | null, value?: CompletionResult): void => {
       if (settled) return;
@@ -210,49 +265,92 @@ const PRICES: Record<string, { input: number; output: number }> = {
   'claude-opus-5': { input: 5, output: 25 },
 };
 
-function apiCost(model: string, u: TokenUsage): number | undefined {
+/** Web search is billed per request on top of tokens: US$10 per 1,000 searches. */
+const WEB_SEARCH_USD = 0.01;
+/** Searches one fact-check may run. Bounds the cost of a call that keeps digging. */
+const WEB_SEARCH_MAX_USES = 8;
+/** A paused server-tool turn is resumed at most this many times before giving up. */
+const MAX_PAUSE_RESUMES = 4;
+
+function apiCost(model: string, u: TokenUsage, webSearches = 0): number | undefined {
   const p = PRICES[model];
   if (!p) return undefined;
   // Cache writes bill at 1.25x input, cache reads at 0.1x.
   const input = u.inputTokens + u.cacheCreationTokens * 1.25 + u.cacheReadTokens * 0.1;
-  return (input * p.input + u.outputTokens * p.output) / 1_000_000;
+  return (input * p.input + u.outputTokens * p.output) / 1_000_000 + webSearches * WEB_SEARCH_USD;
+}
+
+/**
+ * The answer is the run of text blocks at the end of the response. With web search
+ * on, the model may also write a sentence before a search, and that is not part of
+ * the answer.
+ */
+function finalText(content: Anthropic.ContentBlock[]): string {
+  const parts: string[] = [];
+  for (let i = content.length - 1; i >= 0; i -= 1) {
+    const block = content[i];
+    if (block.type === 'text') parts.unshift(block.text);
+    else if (parts.length > 0) break;
+  }
+  return parts.join('');
 }
 
 let client: Anthropic | null = null;
 
-export async function completeViaApi(system: string, user: string): Promise<CompletionResult> {
+export async function completeViaApi(
+  system: string,
+  user: string,
+  opts: CompletionOptions = {},
+): Promise<CompletionResult> {
   if (!env.anthropicApiKey) {
     throw new Error('LLM_TRANSPORT=api needs ANTHROPIC_API_KEY');
   }
   client ??= new Anthropic({ apiKey: env.anthropicApiKey });
 
-  const response = await client.messages.create({
-    model: env.llmModel,
-    max_tokens: 16000,
-    // Adaptive thinking at low effort: this is judgement work, but bounded
-    // judgement, and effort is the dial ADR 0003 names for keeping it cheap.
-    thinking: { type: 'adaptive' },
-    output_config: {
-      effort: 'low',
-      format: { type: 'json_schema', schema: ENRICH_JSON_SCHEMA as unknown as Record<string, unknown> },
-    },
-    // The one breakpoint goes on the system prompt, which is the only part of the
-    // request that is byte-identical between runs (lib/enrich/prompt.ts).
-    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
-    messages: [{ role: 'user', content: user }],
-  });
+  const schema = (opts.schema ?? ENRICH_JSON_SCHEMA) as unknown as Record<string, unknown>;
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: user }];
+  let usage = EMPTY_USAGE;
+  let webSearches = 0;
+  let response: Anthropic.Message;
 
-  const text = response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map((b) => b.text)
-    .join('');
+  for (let resumes = 0; ; resumes += 1) {
+    response = await client.messages.create({
+      model: env.llmModel,
+      max_tokens: 16000,
+      // Adaptive thinking at low effort: this is judgement work, but bounded
+      // judgement, and effort is the dial ADR 0003 names for keeping it cheap.
+      thinking: { type: 'adaptive' },
+      output_config: {
+        effort: opts.effort ?? 'low',
+        // Not constrained on a web-search call. Search answers carry citations, and
+        // the API rejects citations next to a constrained format on document input.
+        // Whether it does for search is untested, so this takes the request shape
+        // that cannot be rejected: the prompt asks for the JSON and the caller's
+        // validator checks it.
+        ...(opts.webSearch ? {} : { format: { type: 'json_schema' as const, schema } }),
+      },
+      ...(opts.webSearch
+        ? { tools: [{ type: 'web_search_20260209' as const, name: 'web_search' as const, max_uses: WEB_SEARCH_MAX_USES }] }
+        : {}),
+      // The one breakpoint goes on the system prompt, which is the only part of the
+      // request that is byte-identical between runs (lib/enrich/prompt.ts).
+      system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+      messages,
+    });
 
-  const usage: TokenUsage = {
-    inputTokens: n(response.usage.input_tokens),
-    outputTokens: n(response.usage.output_tokens),
-    cacheCreationTokens: n(response.usage.cache_creation_input_tokens),
-    cacheReadTokens: n(response.usage.cache_read_input_tokens),
-  };
+    usage = addUsage(usage, {
+      inputTokens: n(response.usage.input_tokens),
+      outputTokens: n(response.usage.output_tokens),
+      cacheCreationTokens: n(response.usage.cache_creation_input_tokens),
+      cacheReadTokens: n(response.usage.cache_read_input_tokens),
+    });
+    webSearches += n(response.usage.server_tool_use?.web_search_requests);
 
-  return { text, usage, costUsd: apiCost(env.llmModel, usage) };
+    // The server stops a long search turn part way; sending the partial turn back
+    // unchanged resumes it.
+    if (response.stop_reason !== 'pause_turn' || resumes >= MAX_PAUSE_RESUMES) break;
+    messages.push({ role: 'assistant', content: response.content });
+  }
+
+  return { text: finalText(response.content), usage, costUsd: apiCost(env.llmModel, usage, webSearches) };
 }

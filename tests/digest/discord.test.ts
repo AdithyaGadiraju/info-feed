@@ -11,6 +11,8 @@ const mockEnv = vi.hoisted(() => ({
   laneWebhooks: {} as Record<string, string | undefined>,
   feedBaseUrl: 'https://feed.test',
   tz: 'Australia/Sydney',
+  // Off, so digestLane's default verifier is a no-op and no test starts a model call.
+  verifyStories: false,
 }));
 
 vi.mock('../../lib/env.js', () => ({
@@ -24,6 +26,9 @@ vi.mock('../../lib/env.js', () => ({
     },
     get tz() {
       return mockEnv.tz;
+    },
+    get verifyStories() {
+      return mockEnv.verifyStories;
     },
   },
 }));
@@ -54,6 +59,7 @@ function story(overrides: Partial<StoryWithLink> = {}): StoryWithLink {
     firstSeenAt: new Date('2026-09-13T00:00:00Z'),
     updatedAt: new Date('2026-09-13T00:00:00Z'),
     digestedAt: null,
+    verification: null,
     ...overrides,
   };
 }
@@ -106,6 +112,36 @@ describe('buildLaneEmbed', () => {
     const description = messages[0].embeds![0].description;
     expect(description).toContain(`${BASE_URL}/story/9`);
     expect(description).not.toContain('null');
+  });
+
+  it('puts the fact-check verdict, note and source under the summary', () => {
+    const disputed = story({
+      id: 3,
+      summaryShort: 'Xbox bought exclusive streaming rights.',
+      verification: {
+        verdict: 'disputed',
+        note: 'Xbox says the game will not be streaming exclusively.',
+        sources: [{ title: 'Exec clarifies', url: 'https://news.test/denial_(update)' }],
+        checkedAt: NOW,
+      },
+    });
+
+    const description = buildLaneEmbed('games', [disputed], BASE_URL, NOW, 'Australia/Sydney')[0].embeds![0]
+      .description;
+
+    // Parentheses are escaped so the URL cannot close the markdown link early.
+    const check =
+      '**Disputed** · Xbox says the game will not be streaming exclusively. ([source](https://news.test/denial_%28update%29))';
+    expect(description).toContain(check);
+    expect(description.indexOf(disputed.summaryShort)).toBeLessThan(description.indexOf(check));
+    expect(description.indexOf(check)).toBeLessThan(description.indexOf(disputed.primaryUrl!));
+  });
+
+  it('says so when a story was not fact-checked', () => {
+    const description = buildLaneEmbed('ai', [story()], BASE_URL, NOW, 'Australia/Sydney')[0].embeds![0]
+      .description;
+
+    expect(description).toContain('**Unchecked**');
   });
 
   it('produces no messages for an empty lane', () => {
@@ -330,6 +366,34 @@ describe('digestLane', () => {
 
     expect(result).toEqual({ sent: 2, ok: true, status: 204 });
     expect(mockQueries.recordDigest).toHaveBeenCalledWith('ai', [5, 6], 204);
+  });
+
+  it('posts the stories as the fact-check returned them', async () => {
+    const selected = [story({ id: 5 })];
+    const checked = [
+      story({ id: 5, verification: { verdict: 'confirmed', note: 'Announced by the lab.', sources: [], checkedAt: NOW } }),
+    ];
+    mockQueries.getDigestStories.mockResolvedValue(selected);
+    const verifier = vi.fn().mockResolvedValue({ stories: checked, checked: 1, failed: 0, costUsd: 0.1 });
+    const poster = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+
+    await digestLane('ai', { poster, verifier, now: NOW });
+
+    expect(verifier).toHaveBeenCalledWith('ai', selected);
+    expect(poster).toHaveBeenCalledWith('ai', checked);
+  });
+
+  it('posts prepared stories without selecting or checking again', async () => {
+    const prepared = [story({ id: 11 })];
+    const verifier = vi.fn();
+    const poster = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+
+    const result = await digestLane('ai', { poster, verifier, prepared, now: NOW });
+
+    expect(result).toEqual({ sent: 1, ok: true, status: 204 });
+    expect(mockQueries.getDigestStories).not.toHaveBeenCalled();
+    expect(verifier).not.toHaveBeenCalled();
+    expect(mockQueries.recordDigest).toHaveBeenCalledWith('ai', [11], 204);
   });
 
   it('skips posting entirely for an empty lane', async () => {

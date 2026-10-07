@@ -2,20 +2,26 @@
  * `npm run digest` — the primary way info-feed is used (ADR 0001).
  *
  * No machine is assumed to be always on, so this runs the whole pipeline once and
- * exits. It streams: each lane is ingested, enriched and posted to Discord before
- * the next lane starts, so reading can begin while later lanes are still running
- * (ADR 0004). It holds no source or LLM logic of its own.
+ * exits. It streams: lanes are posted to Discord in order, each as soon as it is
+ * ready, so reading can begin while later lanes are still running (ADR 0004). It
+ * holds no source or LLM logic of its own.
+ *
+ * The lanes overlap. Ingestion still runs one lane at a time, but a lane's model
+ * work (enrichment, then the fact-check of its digest stories) starts the moment
+ * its ingestion ends and runs alongside every other lane's. Model calls are nearly
+ * all of the wall-clock time, so the run takes about as long as its slowest lane
+ * rather than the sum of all of them.
  *
  * Cross-platform by construction: plain Node, no shell syntax, no native modules.
  */
 import { closeDb, dashboardUrl, isProjectPausedError } from '../lib/db/client';
 import { migrate } from '../lib/db/migrate';
 import { getLastDigestAt } from '../lib/db/queries';
-import { isLane, type Lane } from '../lib/db/types';
+import { isLane, type Lane, type StoryWithLink } from '../lib/db/types';
 import { sourcesConfig } from '../config/sources';
 import { ingest } from '../lib/sources/index';
 import { enrichLane } from '../lib/enrich/run';
-import { digestFooter, digestHeader, digestLane } from '../lib/digest/run';
+import { digestFooter, digestHeader, digestLane, prepareLane } from '../lib/digest/run';
 import { postFooter, postHeader } from '../lib/digest/discord';
 
 const MAX_SINCE_HOURS = 72;
@@ -65,12 +71,45 @@ interface LaneOutcome {
   filtered: number;
   created: number;
   updated: number;
+  /** Digest stories that got a fact-check verdict in this run. */
+  checked: number;
   costUsd: number;
   posted: number;
   error?: string;
 }
 
-async function runLane(lane: Lane, since: Date): Promise<LaneOutcome> {
+/**
+ * Runs tasks one at a time, in the order they were queued.
+ *
+ * Ingestion is the one stage that must not overlap. Reddit's limit is a single
+ * per-address budget (lib/sources/reddit.ts spaces its own requests for that
+ * reason), so six lanes fetching at once would get the whole address throttled.
+ */
+function serialQueue(): <T>(task: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return (task) => {
+    const run = tail.then(task);
+    tail = run.catch(() => {});
+    return run;
+  };
+}
+
+interface PreparedLane {
+  out: LaneOutcome;
+  /** Selected and fact-checked, ready to post. Null when the lane failed before that. */
+  stories: StoryWithLink[] | null;
+}
+
+/**
+ * Everything a lane needs before it can be posted. Never rejects: a failure is
+ * recorded on the outcome, because this promise is left unawaited while earlier
+ * lanes post.
+ */
+async function prepare(
+  lane: Lane,
+  since: Date,
+  ingestInTurn: ReturnType<typeof serialQueue>,
+): Promise<PreparedLane> {
   const out: LaneOutcome = {
     lane,
     fetched: 0,
@@ -78,12 +117,13 @@ async function runLane(lane: Lane, since: Date): Promise<LaneOutcome> {
     filtered: 0,
     created: 0,
     updated: 0,
+    checked: 0,
     costUsd: 0,
     posted: 0,
   };
 
   try {
-    const ingested = await ingest({ lanes: [lane], since, job: `ingest:${lane}` });
+    const ingested = await ingestInTurn(() => ingest({ lanes: [lane], since, job: `ingest:${lane}` }));
     out.fetched = ingested.fetched;
     out.stored = ingested.stored;
     out.filtered = ingested.filtered;
@@ -100,7 +140,20 @@ async function runLane(lane: Lane, since: Date): Promise<LaneOutcome> {
     out.updated = enriched.updated;
     out.costUsd = enriched.costUsd;
 
-    const posted = await digestLane(lane);
+    const prepared = await prepareLane(lane);
+    out.checked = prepared.checked;
+    out.costUsd += prepared.costUsd;
+    return { out, stories: prepared.stories };
+  } catch (err) {
+    out.error = err instanceof Error ? err.message : String(err);
+    return { out, stories: null };
+  }
+}
+
+async function post({ out, stories }: PreparedLane): Promise<LaneOutcome> {
+  if (stories === null) return out;
+  try {
+    const posted = await digestLane(out.lane, { prepared: stories });
     out.posted = posted.sent;
     if (!posted.ok) {
       // -1 means postLane never made a request, which is a configuration problem
@@ -111,7 +164,6 @@ async function runLane(lane: Lane, since: Date): Promise<LaneOutcome> {
   } catch (err) {
     out.error = err instanceof Error ? err.message : String(err);
   }
-
   return out;
 }
 
@@ -135,14 +187,19 @@ async function main(): Promise<void> {
   // a later lane hangs (ADR 0004).
   await postHeader(digestHeader(lanes.length, startedAt));
 
+  // Every lane starts now; the loop below only decides the order they are posted in.
+  const ingestInTurn = serialQueue();
+  const preparing = lanes.map((lane) => prepare(lane, since, ingestInTurn));
+
   const outcomes: LaneOutcome[] = [];
-  for (const lane of lanes) {
-    const outcome = await runLane(lane, since);
+  for (const [i, lane] of lanes.entries()) {
+    const outcome = await post(await preparing[i]);
     outcomes.push(outcome);
     const status = outcome.error ? `FAILED (${outcome.error})` : `${outcome.posted} posted`;
     console.log(
       `  ${lane}: ${outcome.fetched} fetched, ${outcome.stored} stored, ${outcome.filtered} filtered, ` +
-        `${outcome.created} new stories, ${outcome.updated} updated, $${outcome.costUsd.toFixed(4)} · ${status}`,
+        `${outcome.created} new stories, ${outcome.updated} updated, ${outcome.checked} fact-checked, ` +
+        `$${outcome.costUsd.toFixed(4)} · ${status}`,
     );
   }
 

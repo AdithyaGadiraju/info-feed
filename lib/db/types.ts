@@ -63,6 +63,38 @@ export interface NewItem {
   storyId?: number | null;
 }
 
+/**
+ * How far a story's central claim can be trusted, as judged by the fact-check pass
+ * (lib/verify). The rules for each verdict live in `lib/verify/prompt.ts`.
+ */
+export const VERDICTS = ['confirmed', 'unconfirmed', 'disputed', 'false'] as const;
+export type Verdict = (typeof VERDICTS)[number];
+
+export const VERDICT_LABELS: Record<Verdict, string> = {
+  confirmed: 'Confirmed',
+  unconfirmed: 'Unconfirmed',
+  disputed: 'Disputed',
+  false: 'False',
+};
+
+export function isVerdict(v: unknown): v is Verdict {
+  return typeof v === 'string' && (VERDICTS as readonly string[]).includes(v);
+}
+
+export interface VerificationSource {
+  title: string;
+  url: string;
+}
+
+export interface Verification {
+  verdict: Verdict;
+  /** One or two sentences: who confirmed or denied the claim, and what they said. */
+  note: string;
+  /** The pages the verdict rests on, most important first. */
+  sources: VerificationSource[];
+  checkedAt: Date;
+}
+
 export interface Story {
   id: number;
   lane: Lane;
@@ -73,7 +105,15 @@ export interface Story {
   firstSeenAt: Date;
   updatedAt: Date;
   digestedAt: Date | null;
+  /**
+   * Null until the story has been fact-checked. Only stories selected for a digest
+   * are checked, so most stories below the digest threshold stay null for good.
+   */
+  verification: Verification | null;
 }
+
+/** One item behind a story, as the fact-check prompt sees it. */
+export type StorySource = Pick<Item, 'source' | 'url' | 'title' | 'publishedAt'>;
 
 /**
  * A story plus the link to the article behind it: the URL of the best item

@@ -17,6 +17,12 @@
   --color-lane-betting: #fbbf24;
   --color-lane-gamedev: #f472b6;
   --color-lane-games: #38bdf8;
+
+  /* Fact-check verdicts (lib/verify). */
+  --color-verdict-confirmed: #34d399;
+  --color-verdict-unconfirmed: #fbbf24;
+  --color-verdict-disputed: #fb923c;
+  --color-verdict-false: #f87171;
 }
 
 html {

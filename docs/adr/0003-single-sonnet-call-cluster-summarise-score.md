@@ -52,3 +52,16 @@ Cost forks the design. A live feed means many enrichment runs a day. Measured ag
 - `lib/enrich/transport.ts` — `cli` (spawn `claude -p`) and `api` (SDK) implementations behind one `complete(prompt, schema)` function.
 - `tests/enrich/prompt.test.ts` — serialisation and schema validation with fixture items; one optional live test gated on `claude` being on PATH (CLI) or `ANTHROPIC_API_KEY` (API).
 - Depends on `lib/db/queries.ts` only. Disjoint from sources, digest and web files.
+
+## Deviations
+- **A second kind of model call: the fact-check (2026-10-07).** The single call
+  writes summaries from the ingested items alone, so it cannot know that a report was
+  denied a few hours later. `lib/verify/` adds one call per digest story with web
+  search enabled, which returns a verdict (`confirmed`, `unconfirmed`, `disputed`,
+  `false`), a one-line note and its sources, stored on `stories`. It runs only on the
+  stories a digest is about to post (score 4+, up to 8 per lane), reuses
+  `lib/enrich/transport.ts`, and a failed check never blocks the post. Cost is about
+  US$0.08-0.12 per story on Sonnet 5, more than enrichment itself; `VERIFY_STORIES=off`
+  disables it.
+- **Model calls are capped by `LLM_CONCURRENCY` (default 8), not run one at a time.**
+  Lanes now enrich alongside each other in `npm run digest` (ADR 0004 Deviations).

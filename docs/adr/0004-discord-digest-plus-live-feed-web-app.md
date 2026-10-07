@@ -41,3 +41,15 @@ Gadi wants both a pushed summary and a place to scroll and expand. Delivery chan
 - `lib/digest/run.ts` — selection query, send, mark. Depends on `lib/db/queries.ts`.
 - `middleware.ts`, `app/layout.tsx`, `app/page.tsx`, `app/story/[id]/page.tsx`, `app/api/feed/route.ts`, `app/globals.css`, `components/StoryCard.tsx`, `components/Feed.tsx` — web only. Depends on `lib/db/queries.ts` and `lib/db/types.ts`.
 - Digest and web files are disjoint from each other and from sources/enrich; they share only the db query layer.
+
+## Deviations
+- **Lanes overlap in `npm run digest` (2026-10-07).** The decision above runs each
+  lane to completion before the next starts. Ingestion still does, because Reddit's
+  rate limit is per address, but each lane's enrichment and fact-check now start as
+  soon as its ingestion ends and run alongside the other lanes. Posting order and the
+  header and footer are unchanged: a lane is posted once it and every lane before it
+  are ready. `lib/digest/run.ts` splits into `prepareLane` (select and fact-check) and
+  `digestLane` (post and mark) to allow this.
+- **Each digest story carries a fact-check line (2026-10-07).** Verdict, note and one
+  source link sit between the summary and the links. The feed card shows the verdict
+  as a badge, with the note and sources in the expanded panel. See ADR 0003 Deviations.

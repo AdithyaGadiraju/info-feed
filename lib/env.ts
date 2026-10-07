@@ -71,6 +71,19 @@ export const env = {
   get llmMaxCallUsd(): number {
     return num('LLM_MAX_CALL_USD', 1);
   },
+  /**
+   * How many model calls may be in flight at once, enrichment and fact-checks
+   * together. Every lane's enrichment overlaps in `npm run digest` and each digest
+   * story gets its own fact-check call, so without a cap a full run would start
+   * around fifty `claude` processes at the same moment.
+   */
+  get llmConcurrency(): number {
+    return Math.max(1, Math.floor(num('LLM_CONCURRENCY', 8)));
+  },
+  /** Fact-check digest stories with web search before posting them. `off` disables it. */
+  get verifyStories(): boolean {
+    return str('VERIFY_STORIES', 'on').toLowerCase() !== 'off';
+  },
   get enrichIntervalMin(): number {
     return num('ENRICH_INTERVAL_MIN', 60);
   },

@@ -93,3 +93,12 @@ ALTER TABLE stories ALTER COLUMN updated_at    SET DEFAULT date_trunc('milliseco
 ALTER TABLE stories ALTER COLUMN first_seen_at SET DEFAULT date_trunc('milliseconds', now());
 UPDATE stories SET updated_at = date_trunc('milliseconds', updated_at)
  WHERE updated_at <> date_trunc('milliseconds', updated_at);
+
+-- Fact-check result for a story (lib/verify). All four are NULL until the story has
+-- been checked, which happens when it is selected for a digest. Writing a verdict
+-- never touches updated_at: a check is not a change to the story, and bumping it
+-- would re-sort the feed and put the story back into the next digest.
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS verdict         text;
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS verdict_note    text;
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS verdict_sources jsonb;
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS verified_at     timestamptz;

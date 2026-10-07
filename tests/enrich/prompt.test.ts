@@ -39,6 +39,7 @@ function story(over: Partial<Story> = {}): Story {
     firstSeenAt: new Date('2026-09-12T09:00:00Z'),
     updatedAt: new Date('2026-09-13T01:00:00Z'),
     digestedAt: null,
+    verification: null,
     ...over,
   };
 }

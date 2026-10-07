@@ -5,7 +5,7 @@
  * to Gadi's real channel.
  */
 import { env } from '../env';
-import { LANE_LABELS, type Lane, type StoryWithLink } from '../db/types';
+import { LANE_LABELS, VERDICT_LABELS, type Lane, type StoryWithLink } from '../db/types';
 
 export interface DiscordEmbed {
   title: string;
@@ -66,29 +66,46 @@ function storyLinks(story: StoryWithLink, baseUrl: string): string {
 }
 
 /**
+ * The fact-check result, on its own line under the summary. The label is the
+ * part to read at a glance; the note says who confirmed or denied the claim; the
+ * link goes to the page the verdict rests on. A story with no verdict says so
+ * rather than staying silent, because an absent line would read as "nothing wrong".
+ */
+function checkLine(story: StoryWithLink): string {
+  const v = story.verification;
+  if (!v) return '**Unchecked**';
+  const source = v.sources[0];
+  // A bare ")" in the URL would close the markdown link early.
+  const url = source?.url.replace(/\(/g, '%28').replace(/\)/g, '%29');
+  const link = url ? ` ([source](${url}))` : '';
+  return `**${VERDICT_LABELS[v.verdict]}** · ${v.note}${link}`;
+}
+
+/**
  * One story as one packable line. Nothing caps `summary_short` on the way in (the
  * enrichment validator caps only the title), and `packDescriptions` can only split
  * between lines — so a single runaway summary would be emitted intact, rejected by
  * Discord with a 400, and rebuilt identically on every later run, wedging the lane
  * forever. Truncating here is the only place that can make that impossible. The
  * links are never the part that gets cut: a clipped summary still reaches the
- * article, a clipped URL reaches nothing.
+ * article, a clipped URL reaches nothing. The fact-check line is kept whole with
+ * them, and its length is bounded where the verdict is validated.
  */
 function storyLine(story: StoryWithLink, baseUrl: string): string {
-  const links = storyLinks(story, baseUrl);
+  const tail = `${checkLine(story)}\n${storyLinks(story, baseUrl)}`;
   const head = `${scoreMarker(story.score)} **${story.title}**`;
-  const line = `${head}\n${story.summaryShort}\n${links}`;
+  const line = `${head}\n${story.summaryShort}\n${tail}`;
   if (line.length <= DISCORD_LIMITS.embedDescription) return line;
 
   const NEWLINES = 2;
   const room =
-    DISCORD_LIMITS.embedDescription - (head.length + links.length + NEWLINES + ELLIPSIS.length);
-  if (room > 0) return `${head}\n${story.summaryShort.slice(0, room)}${ELLIPSIS}\n${links}`;
+    DISCORD_LIMITS.embedDescription - (head.length + tail.length + NEWLINES + ELLIPSIS.length);
+  if (room > 0) return `${head}\n${story.summaryShort.slice(0, room)}${ELLIPSIS}\n${tail}`;
 
-  // Pathological: the title alone overruns the embed. Keep the links and whatever
-  // of the heading fits in front of them.
-  const headRoom = DISCORD_LIMITS.embedDescription - (links.length + 1 + ELLIPSIS.length);
-  return `${head.slice(0, Math.max(0, headRoom))}${ELLIPSIS}\n${links}`;
+  // Pathological: the title alone overruns the embed. Keep the tail and whatever
+  // of the heading fits in front of it.
+  const headRoom = DISCORD_LIMITS.embedDescription - (tail.length + 1 + ELLIPSIS.length);
+  return `${head.slice(0, Math.max(0, headRoom))}${ELLIPSIS}\n${tail}`;
 }
 
 /**

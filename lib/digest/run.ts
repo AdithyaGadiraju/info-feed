@@ -6,6 +6,7 @@
 import { finishRun, getDigestStories, recordDigest, startRun } from '../db/queries';
 import type { Lane, StoryWithLink } from '../db/types';
 import { env } from '../env';
+import { verifyStories, type VerifyResult } from '../verify/run';
 import { postLane, type PostResult } from './discord';
 
 export interface DigestLaneResult {
@@ -17,6 +18,14 @@ export interface DigestLaneResult {
 export interface DigestLaneDeps {
   /** Injectable so tests can force a non-2xx without a fake network layer. */
   poster?: (lane: Lane, stories: StoryWithLink[]) => Promise<PostResult>;
+  /** Injectable so tests never start a model call. */
+  verifier?: (lane: Lane, stories: StoryWithLink[]) => Promise<VerifyResult>;
+  /**
+   * Stories already selected and fact-checked by `prepareLane`. `npm run digest`
+   * passes this so the slow part can run for every lane at once while the posts
+   * still go out in lane order.
+   */
+  prepared?: StoryWithLink[];
   now?: Date;
 }
 
@@ -59,7 +68,18 @@ async function closeRun(
 }
 
 /**
- * Selects, posts, and marks one lane. `digested_at` is only touched after a 2xx
+ * The slow half of a lane's digest: pick the stories, then fact-check them. It
+ * writes verdicts and nothing else, so it is safe to run for several lanes at once
+ * and safe to repeat.
+ */
+export async function prepareLane(lane: Lane, deps: DigestLaneDeps = {}): Promise<VerifyResult> {
+  const stories = await getDigestStories(lane, 4, 8);
+  if (stories.length === 0) return { stories, checked: 0, failed: 0, costUsd: 0 };
+  return (deps.verifier ?? verifyStories)(lane, stories);
+}
+
+/**
+ * Selects, fact-checks, posts, and marks one lane. `digested_at` is only touched after a 2xx
  * (ADR 0004) so a failed post leaves the same stories eligible for the next run.
  */
 export async function digestLane(lane: Lane, deps: DigestLaneDeps = {}): Promise<DigestLaneResult> {
@@ -67,7 +87,7 @@ export async function digestLane(lane: Lane, deps: DigestLaneDeps = {}): Promise
   let selected = 0;
 
   try {
-    const stories = await getDigestStories(lane, 4, 8);
+    const stories = deps.prepared ?? (await prepareLane(lane, deps)).stories;
     selected = stories.length;
 
     if (stories.length === 0) {

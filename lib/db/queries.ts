@@ -10,6 +10,7 @@ import { db } from './client';
 import {
   EXCLUDED_STORY_ID,
   isNewStoryAssignment,
+  isVerdict,
   type EnrichResult,
   type FeedCursor,
   type FeedPage,
@@ -18,9 +19,12 @@ import {
   type NewItem,
   type Score,
   type Story,
+  type StorySource,
   type StoryWithCount,
   type StoryWithItems,
   type StoryWithLink,
+  type Verification,
+  type VerificationSource,
 } from './types';
 
 // ---- row mappers ----
@@ -57,6 +61,21 @@ function toStory(r: Row): Story {
     firstSeenAt: r.first_seen_at as Date,
     updatedAt: r.updated_at as Date,
     digestedAt: (r.digested_at as Date | null) ?? null,
+    verification: toVerification(r),
+  };
+}
+
+/**
+ * Null when the row has no verdict, and also when the query did not select the
+ * verdict columns at all (`getOpenStories` does not: clustering has no use for them).
+ */
+function toVerification(r: Row): Verification | null {
+  if (!isVerdict(r.verdict) || !r.verified_at) return null;
+  return {
+    verdict: r.verdict,
+    note: (r.verdict_note as string | null) ?? '',
+    sources: Array.isArray(r.verdict_sources) ? (r.verdict_sources as VerificationSource[]) : [],
+    checkedAt: r.verified_at as Date,
   };
 }
 
@@ -331,6 +350,7 @@ export async function getDigestStories(
   const rows = await sql`
     SELECT id::int AS id, lane, title, summary_short, summary_detail, score,
            first_seen_at, updated_at, digested_at,
+           verdict, verdict_note, verdict_sources, verified_at,
            (SELECT i.url FROM items i WHERE i.story_id = stories.id
              ORDER BY ${bestLinkFirst(sql)} LIMIT 1) AS primary_url
     FROM stories
@@ -367,6 +387,59 @@ export async function recordDigest(
   });
 }
 
+// ---- fact-check ----
+
+/** How many source items one story contributes to its fact-check prompt. */
+const MAX_SOURCES_PER_STORY = 8;
+
+/**
+ * The items behind each story, best link first, for the fact-check prompt. One
+ * statement for the whole lane's selection rather than one per story (ADR 0001).
+ */
+export async function getStorySources(storyIds: number[]): Promise<Map<number, StorySource[]>> {
+  const out = new Map<number, StorySource[]>();
+  if (storyIds.length === 0) return out;
+  const sql = db();
+  const rows = await sql`
+    SELECT i.story_id::int AS story_id, i.source, i.url, i.title, i.published_at
+    FROM items i
+    WHERE i.story_id = ANY(${sql.array(storyIds)}::bigint[])
+    ORDER BY i.story_id, ${bestLinkFirst(sql)}
+  `;
+  for (const r of rows) {
+    const id = Number(r.story_id);
+    const list = out.get(id) ?? [];
+    if (list.length >= MAX_SOURCES_PER_STORY) continue;
+    list.push({
+      source: r.source as string,
+      url: r.url as string,
+      title: r.title as string,
+      publishedAt: r.published_at as Date,
+    });
+    out.set(id, list);
+  }
+  return out;
+}
+
+/**
+ * Stores a verdict and returns it as the story now carries it. `updated_at` is
+ * deliberately left alone: see the column comment in schema.sql.
+ */
+export async function setVerification(
+  storyId: number,
+  v: Omit<Verification, 'checkedAt'>,
+): Promise<Verification> {
+  const sql = db();
+  const [row] = await sql`
+    UPDATE stories
+    SET verdict = ${v.verdict}, verdict_note = ${v.note},
+        verdict_sources = ${sql.json(v.sources as never)}, verified_at = now()
+    WHERE id = ${storyId}
+    RETURNING verified_at
+  `;
+  return { ...v, checkedAt: (row?.verified_at as Date | undefined) ?? new Date() };
+}
+
 /** Default `--since` for `npm run digest`: the last successful digest, capped at 72 h. */
 export async function getLastDigestAt(maxHours = 72): Promise<Date> {
   const sql = db();
@@ -398,7 +471,9 @@ export async function getFeedPage(opts: {
 
   const rows = await sql`
     SELECT s.id::int AS id, s.lane, s.title, s.summary_short, s.summary_detail, s.score,
-           s.first_seen_at, s.updated_at, s.digested_at, cnt.item_count, cnt.primary_url
+           s.first_seen_at, s.updated_at, s.digested_at,
+           s.verdict, s.verdict_note, s.verdict_sources, s.verified_at,
+           cnt.item_count, cnt.primary_url
     FROM stories s
     LEFT JOIN LATERAL (
       -- One pass over the story's items for both the count and the link, ordered
@@ -438,6 +513,7 @@ export async function getStoryWithItems(id: number): Promise<StoryWithItems | nu
   const [row] = await sql`
     SELECT id::int AS id, lane, title, summary_short, summary_detail, score,
            first_seen_at, updated_at, digested_at,
+           verdict, verdict_note, verdict_sources, verified_at,
            (SELECT i.url FROM items i WHERE i.story_id = stories.id
              ORDER BY ${bestLinkFirst(sql)} LIMIT 1) AS primary_url
     FROM stories WHERE id = ${id}

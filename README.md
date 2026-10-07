@@ -23,13 +23,18 @@ Three entrypoints, one package, one database.
 
 | Command | What it does |
 | --- | --- |
-| `npm run digest` | The main one. Runs the whole pipeline once, lane by lane, and exits. |
+| `npm run digest` | The main one. Runs the whole pipeline once, posts lane by lane, and exits. |
 | `npm run worker` | Optional. Same jobs on a schedule, for when a machine is left running. |
 | `npm run dev` | The live feed at `http://localhost:$PORT`. |
 
-`npm run digest` assumes no machine is always on. For each lane in turn it ingests that
-lane's sources, enriches the pending items into stories, and posts that lane's Discord
-message immediately, so you can start reading while later lanes are still running.
+`npm run digest` assumes no machine is always on. For each lane it ingests that lane's
+sources, enriches the pending items into stories, fact-checks the stories it is about
+to post, and posts that lane's Discord message. Lanes are posted in order, each as soon
+as it is ready, so you can start reading while later lanes are still running.
+
+The lanes overlap. Ingestion runs one lane at a time, because Reddit limits requests
+per address, but each lane's model work starts as soon as its ingestion ends and runs
+alongside the other lanes. A run takes about as long as its slowest lane, not the sum.
 
 ```bash
 npm run digest                      # since the last digest, capped at 72h
@@ -90,7 +95,34 @@ Optional:
 | `RETTIWT_API_KEY` | Twitter. Leave empty to skip it entirely, which is the v1 default. |
 | `ANTHROPIC_API_KEY` | Only used when `LLM_TRANSPORT=api`. |
 
-## The two dials
+## Fact-check
+
+Every story in a digest is checked against the web before it is posted
+(`lib/verify/`). One model call per story searches for the claim and for any response
+to it, then returns a verdict, a one-line note and the pages it relied on. All of a
+lane's stories are checked at once.
+
+| Verdict | Meaning |
+| --- | --- |
+| Confirmed | A primary source or an on-the-record statement backs the central claim, or two outlets report it from their own sourcing. |
+| Unconfirmed | A single report, unnamed sources, a leak or a rumour. Nothing contradicts it, and nobody with direct knowledge has confirmed it. Also the verdict when the search finds nothing either way. |
+| Disputed | Someone with direct knowledge has denied or contradicted the central claim on the record. |
+| False | Retracted by its originator, or shown not to have happened. |
+| Unchecked | The check failed or timed out. The story is posted anyway. |
+
+The verdict appears under the summary in Discord with the note and a source link, and
+as a badge on the story in the web feed. Disputed and False always carry the page that
+says so. Only digest stories (score 4+) are checked, so most of the web feed has no
+verdict.
+
+A verdict stands until the story changes. When a later run attaches a new item to the
+story, for example the denial of an earlier report, the story re-enters the digest and
+is checked again. Until then the web feed shows the old verdict as outdated.
+
+A verdict is the model's reading of what it found, not proof. Follow the source link
+when it matters. To turn the check off, set `VERIFY_STORIES=off`.
+
+## The dials
 
 **`LLM_MODEL`** — which model does the clustering, summarising and scoring.
 
@@ -109,6 +141,10 @@ development so the worker never spends tokens on its own, and trigger runs by ha
 ```bash
 npm run enrich:once -- --lane ai --max 20
 ```
+
+**`LLM_CONCURRENCY`** — how many model calls run at once, enrichment and fact-checks
+together. Default 8. Lower it if the Claude subscription starts rate-limiting during a
+digest. Raise it to finish a large digest sooner.
 
 Two more dials that are not env vars but matter as much: the **engagement thresholds**
 in `config/sources.ts` decide how many items reach the model at all, and the **prompt
@@ -154,6 +190,11 @@ pays the per-call overhead every time. If you run the worker, raise
 `ENRICH_INTERVAL_MIN` to 180 or more. On the default CLI transport none of this is
 billed, it draws on the Claude subscription's rate-limit window instead.
 
+**The fact-check is not in the figures above, and it costs more than enrichment.**
+Measured on 2026-10-07: three checks cost $0.08, $0.08 and $0.12 and took 19-31s each.
+A digest posts up to 8 stories per lane, so a full six-lane run is up to 48 checks,
+about $4-6 on top. A typical run posts far fewer. `VERIFY_STORIES=off` removes the cost.
+
 ## LLM transport
 
 `LLM_TRANSPORT=cli` (default) spawns the local `claude` CLI in headless mode, using
@@ -182,7 +223,8 @@ config/sources.ts      lanes, feeds, subreddits, HN queries, watchlist, threshol
 lib/db/                schema.sql, client, migrate, typed queries  <- the only raw SQL
 lib/sources/           one file per source, plus index.ts (runner + pre-filter)
 lib/fetchBody.ts       readable-text extraction for link items
-lib/enrich/            prompt, schema, transport, run  <- the one model call
+lib/enrich/            prompt, schema, transport, run  <- clustering, summaries, scores
+lib/verify/            prompt, schema, run  <- the fact-check, one web-search call per digest story
 lib/digest/            Discord formatting and sending
 scripts/digest.ts      the on-command pipeline
 worker/index.ts        the optional scheduler
