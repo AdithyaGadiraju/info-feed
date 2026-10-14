@@ -174,7 +174,9 @@ export async function ingest(opts: IngestOptions): Promise<IngestResult> {
   const startedAt = Date.now();
   const config = opts.config ?? sourcesConfig;
   const sources = opts.sources ?? allSources;
-  const lanes = opts.lanes && opts.lanes.length > 0 ? opts.lanes : undefined;
+  // No explicit lanes means the configured ones, so a paused lane (PAUSED_LANES)
+  // is skipped unless a caller names it.
+  const lanes = opts.lanes && opts.lanes.length > 0 ? opts.lanes : [...config.lanes];
   const maxBodies = opts.maxBodies ?? DEFAULT_MAX_BODIES;
   const runId = await startRun(opts.job ?? 'ingest');
 

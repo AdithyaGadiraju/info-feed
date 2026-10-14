@@ -3,7 +3,7 @@
  * Gadi edits the feed and subreddit lists as the feed gets tuned. Expect churn here
  * for the first couple of weeks and none in the source modules.
  */
-import { LANES } from '../lib/db/types';
+import { ACTIVE_LANES } from '../lib/db/types';
 import type { SourcesConfig } from '../lib/sources/types';
 
 /** Title gate for broad creative-AI feeds: keep only posts about game-usable assets. */
@@ -13,9 +13,11 @@ const ASSET_TOPICS = /\b3d\b|trellis|hunyuan|pixal3d|mesh|texture|pbr|sprite|pix
 const AGENT_TECHNIQUE = /plugin|skill|hook|subagent|mcp|token|claude\.md|agents\.md|workflow|tips?\b|context|i built|cost/i;
 
 export const sourcesConfig: SourcesConfig = {
-  lanes: LANES,
+  // Both are LANES minus PAUSED_LANES (lib/db/types.ts). Pause or resume a lane
+  // there, not here.
+  lanes: ACTIVE_LANES,
   // Digest posting order. ai first because it is the lane Gadi reads first.
-  laneOrder: ['ai', 'ai_dev', 'markets', 'betting', 'gamedev', 'games'],
+  laneOrder: ACTIVE_LANES,
 
   feeds: [
     // ai (AI News): labs, models, research, the industry.

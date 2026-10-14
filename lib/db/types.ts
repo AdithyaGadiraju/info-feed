@@ -3,6 +3,22 @@ export const LANES = ['ai', 'ai_dev', 'markets', 'betting', 'gamedev', 'games'] 
 export type Lane = (typeof LANES)[number];
 
 /**
+ * Lanes switched off for now. A paused lane keeps its id, label, sources and
+ * stored stories, but nothing ingests, enriches or posts for it and the web feed
+ * hides its chip. Flip a lane in or out of this list to toggle it; nothing else
+ * needs to change. `--lane <name>` on the one-off scripts still runs a paused
+ * lane by hand.
+ */
+export const PAUSED_LANES: readonly Lane[] = ['betting'];
+
+/** The lanes currently running: LANES minus PAUSED_LANES, in digest order. */
+export const ACTIVE_LANES: readonly Lane[] = LANES.filter((l) => !PAUSED_LANES.includes(l));
+
+export function isPausedLane(lane: Lane): boolean {
+  return PAUSED_LANES.includes(lane);
+}
+
+/**
  * Human labels for the web chips, story badges and Discord embed titles. The lane
  * id is also a Postgres value, a URL token, a CSS token and an env-var suffix, so
  * it never changes once data exists; this map is the only place a lane is renamed.

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import StoryCard, { reviveStory, type WireStoryWithCount } from '@/components/StoryCard';
-import { LANES, LANE_LABELS, type FeedCursor, type Lane, type StoryWithCount } from '@/lib/db/types';
+import { ACTIVE_LANES, LANE_LABELS, type FeedCursor, type Lane, type StoryWithCount } from '@/lib/db/types';
 
 const PAGE_SIZE = 30;
 const SCORES = [1, 2, 3, 4, 5] as const;
@@ -167,7 +167,7 @@ export default function Feed({
           <button type="button" className={chip(lanes.length === 0)} onClick={() => applyFilters([], minScore)}>
             All
           </button>
-          {LANES.map((lane) => (
+          {ACTIVE_LANES.map((lane) => (
             <button key={lane} type="button" className={chip(lanes.includes(lane))} onClick={() => toggleLane(lane)}>
               {LANE_LABELS[lane]}
             </button>

@@ -17,7 +17,7 @@
 import { closeDb, dashboardUrl, isProjectPausedError } from '../lib/db/client';
 import { migrate } from '../lib/db/migrate';
 import { getLastDigestAt } from '../lib/db/queries';
-import { isLane, type Lane, type StoryWithLink } from '../lib/db/types';
+import { isLane, LANES, type Lane, type StoryWithLink } from '../lib/db/types';
 import { sourcesConfig } from '../config/sources';
 import { ingest } from '../lib/sources/index';
 import { enrichLane } from '../lib/enrich/run';
@@ -43,12 +43,13 @@ function parseArgs(argv: string[]): Args {
       const names = value.split(',').map((s) => s.trim()).filter(Boolean);
       const bad = names.filter((n) => !isLane(n));
       if (bad.length > 0) {
-        throw new Error(`unknown lane(s): ${bad.join(', ')}. Valid: ${sourcesConfig.laneOrder.join(', ')}`);
+        throw new Error(`unknown lane(s): ${bad.join(', ')}. Valid: ${LANES.join(', ')}`);
       }
       // Keep the configured order rather than the order they were typed, so the
-      // Discord messages always arrive in the same sequence.
+      // Discord messages always arrive in the same sequence. Naming a paused lane
+      // explicitly runs it anyway; only the default run skips it.
       const wanted = new Set(names);
-      lanes = sourcesConfig.laneOrder.filter((l) => wanted.has(l));
+      lanes = LANES.filter((l) => wanted.has(l));
       i += 1;
     } else if (arg === '--since') {
       const value = Number(argv[i + 1]);

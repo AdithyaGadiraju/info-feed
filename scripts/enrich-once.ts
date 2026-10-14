@@ -10,7 +10,7 @@
  */
 import { closeDb, withDb } from '../lib/db/client';
 import { countPendingItems } from '../lib/db/queries';
-import { isLane, LANES, type Lane } from '../lib/db/types';
+import { ACTIVE_LANES, isLane, LANES, type Lane } from '../lib/db/types';
 import { enrichLane } from '../lib/enrich/run';
 import { formatUsage, sumUsage, type TokenUsage } from '../lib/enrich/transport';
 import { env } from '../lib/env';
@@ -40,7 +40,7 @@ function parseArgs(argv: string[]): { lanes: Lane[]; max: number } {
     }
   }
 
-  return { lanes: lanes.length > 0 ? lanes : [...LANES], max };
+  return { lanes: lanes.length > 0 ? lanes : [...ACTIVE_LANES], max };
 }
 
 async function main(): Promise<void> {

@@ -42,6 +42,11 @@ npm run digest -- --lane ai         # one lane only
 npm run digest -- --since 24        # last 24 hours
 ```
 
+A lane can be paused without removing it: add it to `PAUSED_LANES` in
+`lib/db/types.ts`. A paused lane keeps its sources and stored stories, but the
+digest, worker and web chips skip it until it is taken out of the list again.
+`--lane <name>` still runs a paused lane by hand. `betting` is paused at the moment.
+
 It works identically on macOS and Windows: no native modules, no shell-specific scripts.
 
 ## Setup
