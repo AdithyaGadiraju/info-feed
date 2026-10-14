@@ -67,13 +67,27 @@ async function closeRun(
   }
 }
 
+/** Stories a digest posts per lane, best first. */
+const DIGEST_LIMIT = 8;
+
+/**
+ * Lanes that post more than `DIGEST_LIMIT`. ai_gamedev is where Gadi wants every
+ * new tool, niche ones included, and a busy release week fills 8 slots with the
+ * big vendors alone.
+ */
+const DIGEST_LIMIT_BY_LANE: Partial<Record<Lane, number>> = { ai_gamedev: 12 };
+
+export function digestLimit(lane: Lane): number {
+  return DIGEST_LIMIT_BY_LANE[lane] ?? DIGEST_LIMIT;
+}
+
 /**
  * The slow half of a lane's digest: pick the stories, then fact-check them. It
  * writes verdicts and nothing else, so it is safe to run for several lanes at once
  * and safe to repeat.
  */
 export async function prepareLane(lane: Lane, deps: DigestLaneDeps = {}): Promise<VerifyResult> {
-  const stories = await getDigestStories(lane, 4, 8);
+  const stories = await getDigestStories(lane, 4, digestLimit(lane));
   if (stories.length === 0) return { stories, checked: 0, failed: 0, costUsd: 0 };
   return (deps.verifier ?? verifyStories)(lane, stories);
 }

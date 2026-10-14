@@ -11,7 +11,9 @@ import { finishRun, getSnapshotState, setItemBodies, startRun, upsertItems } fro
 import { EXCLUDED_STORY_ID, type NewItem } from '../db/types';
 import { fetchBodies } from '../fetchBody';
 import docs from './docs';
+import github from './github';
 import hn from './hn';
+import huggingface from './huggingface';
 import prices from './prices';
 import reddit from './reddit';
 import rss from './rss';
@@ -19,8 +21,13 @@ import steam from './steam';
 import twitter from './twitter';
 import type { Lane, RawItem, Source, SourcesConfig, Thresholds } from './types';
 
-/** Fetch order is irrelevant (they run concurrently); this is reporting order. */
-export const allSources: Source[] = [rss, docs, reddit, hn, steam, prices, twitter];
+/**
+ * Fetch order is irrelevant (they run concurrently); this is reporting order. It is
+ * also the order body candidates are taken in when a run hits `maxBodies`, so
+ * huggingface and github, whose items rely on the fetched model card or README,
+ * sit ahead of reddit and hn.
+ */
+export const allSources: Source[] = [rss, docs, huggingface, github, reddit, hn, steam, prices, twitter];
 
 /**
  * A ceiling on body extraction per run. Bodies are the slowest part of ingestion
@@ -132,7 +139,10 @@ export function shouldExclude(
       return likes < thresholds.twitterMinLikes;
     }
     // rss is filtered by the curation of the feed list itself; steam and prices
-    // carry no engagement number to threshold on.
+    // carry no engagement number to threshold on. huggingface and github apply
+    // their thresholds in the source, because each spec has its own bar (a 3D
+    // model at 25 likes is news, a text-to-speech one is not), and a model below
+    // its bar is simply not returned until a later run sees it cross.
     default:
       return false;
   }

@@ -34,10 +34,22 @@ cuts tokens or raises quality is 4 or 5, and routine changelogs, launches with n
 evidence, anecdotes and opinion are 1 or 2. Every `ai_dev` detail ends with a
 **Try this:** line.
 
-`ai` and `ai_dev` are enriched as one pool (`laneGroup` in `lib/db/types.ts`). The
-model files each new story under one of the two by content, not by source: anything
-that helps you get better results from AI tools is `ai_dev`, and the rest (security
-incidents, acquisitions, policy, hardware, research news) is `ai`.
+`ai_gamedev` is the one lane that scores obscurity up rather than down: any new
+tool, model, Blender add-on or MCP server whose output could go in a game is a 4,
+even from a solo developer, and a new model or integration that beats the previous
+best for an asset type is a 5. Papers with code, notable updates and hands-on
+comparisons are 3; showcases with no tool behind them, unusable demos and opinion
+are 1 or 2. Its detail says how to get the tool, what it costs and what it
+exports, then ends with a **Try this:** line. A developer posting a tool they built
+is a release here, not self-promotion, so it is not dropped. It also posts up to 12
+stories per digest instead of 8 (`DIGEST_LIMIT_BY_LANE` in `lib/digest/run.ts`).
+
+`ai`, `ai_dev` and `ai_gamedev` are enriched as one pool (`laneGroup` in
+`lib/db/types.ts`). The model files each new story under one of the three by
+content, not by source: AI tools for making games and game assets are
+`ai_gamedev`, anything that helps you get better results from AI coding tools is
+`ai_dev`, and the rest (security incidents, acquisitions, policy, hardware,
+research news) is `ai`.
 
 Items that are ads, memes, job posts or engagement bait are not scored at all. They
 go in `dropped`.
@@ -55,7 +67,7 @@ attaches the item and leaves the score alone.
 | --- | --- | --- |
 | `score >= 3` | A 150-300 word `summaryDetail` is written. Below 3 it must be `null`. | `DETAIL_MIN_SCORE` in `lib/enrich/schema.ts` |
 | `score >= 3` | Default filter for the web feed. The "min score" buttons change it. | `DEFAULT_MIN_SCORE` in `app/api/feed/route.ts`, `app/page.tsx` |
-| `score >= 4` | Story is eligible for the Discord digest, best first, 8 per lane. | `getDigestStories` in `lib/db/queries.ts` |
+| `score >= 4` | Story is eligible for the Discord digest, best first, 8 per lane (12 for `ai_gamedev`). | `getDigestStories` in `lib/db/queries.ts`, `digestLimit` in `lib/digest/run.ts` |
 | Ordering | Open stories sent back to the model are sorted by score and capped at 150, so low scorers drop out of clustering context first. | `getOpenStories` in `lib/db/queries.ts` |
 
 The score is shown as dots in the feed (`ScoreDots` in `components/StoryCard.tsx`)

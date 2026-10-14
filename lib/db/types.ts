@@ -1,5 +1,5 @@
-/** The six lanes. Order here is the digest posting order (ADR 0004). */
-export const LANES = ['ai', 'ai_dev', 'markets', 'betting', 'gamedev', 'games'] as const;
+/** The seven lanes. Order here is the digest posting order (ADR 0004). */
+export const LANES = ['ai', 'ai_dev', 'ai_gamedev', 'markets', 'betting', 'gamedev', 'games'] as const;
 export type Lane = (typeof LANES)[number];
 
 /**
@@ -26,6 +26,7 @@ export function isPausedLane(lane: Lane): boolean {
 export const LANE_LABELS: Record<Lane, string> = {
   ai: 'AI News',
   ai_dev: 'AI Dev',
+  ai_gamedev: 'AI Gamedev',
   markets: 'Markets',
   betting: 'Betting',
   gamedev: 'Gamedev',
@@ -35,11 +36,12 @@ export const LANE_LABELS: Record<Lane, string> = {
 /**
  * Lanes that are enriched as one pool. A source's lane is only a hint for these:
  * the model sees open stories from every lane in the group and files each new
- * story under whichever lane its content belongs to. ai and ai_dev share sources
+ * story under whichever lane its content belongs to. The AI lanes share sources
  * (Hacker News, Reddit, lab blogs) and differ by what a story is about, not where
- * it came from, so a security incident from a coding-tool feed still lands in ai.
+ * it came from, so a security incident from a coding-tool feed still lands in ai
+ * and a Blender MCP server from a coding feed lands in ai_gamedev.
  */
-const LANE_GROUPS: ReadonlyArray<readonly Lane[]> = [['ai', 'ai_dev']];
+const LANE_GROUPS: ReadonlyArray<readonly Lane[]> = [['ai', 'ai_dev', 'ai_gamedev']];
 
 /** The lanes enriched together with `lane`, `lane` first. A lane with no group returns itself. */
 export function laneGroup(lane: Lane): Lane[] {

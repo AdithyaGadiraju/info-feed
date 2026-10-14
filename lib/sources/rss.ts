@@ -12,7 +12,7 @@ const USER_AGENT = 'info-feed/1.0 (personal news digest)';
 
 // Six concurrent feed fetches is generous enough to keep a ~20-feed run fast
 // without looking like a burst of traffic to any single host's shared infra.
-const CONCURRENCY = 6;
+const CONCURRENCY = 10;
 
 /** Runs `tasks` with at most `limit` in flight at once, preserving input order. */
 async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
@@ -103,6 +103,11 @@ async function fetchFeed(feed: FeedSpec, ctx: SourceCtx): Promise<RawItem[]> {
 
 export const rss: Source = {
   name: 'rss',
+  // Each feed has its own `sourceTimeoutMs` abort, but a lane fetches dozens of
+  // feeds CONCURRENCY at a time, so the source as a whole needs a longer budget.
+  // At the shared 20s, one slow feed (arXiv takes 10-40s) in a 60-feed lane timed
+  // the whole source out, and a timed-out source returns nothing at all.
+  timeoutMs: 90_000,
   async fetch(ctx: SourceCtx): Promise<RawItem[]> {
     const feeds = ctx.lanes ? ctx.config.feeds.filter((f) => ctx.lanes!.includes(f.lane)) : ctx.config.feeds;
 

@@ -32,7 +32,7 @@ export interface SourceCtx {
 }
 
 export interface Source {
-  name: 'rss' | 'reddit' | 'hn' | 'steam' | 'prices' | 'twitter' | 'docs';
+  name: 'rss' | 'reddit' | 'hn' | 'steam' | 'prices' | 'twitter' | 'docs' | 'huggingface' | 'github';
   fetch(ctx: SourceCtx): Promise<RawItem[]>;
   /**
    * The source returns its whole current listing every run rather than what is new
@@ -99,6 +99,52 @@ export interface HnQuerySpec {
   showHn?: boolean;
 }
 
+/**
+ * A Hugging Face Hub model listing, ranked by trending score. Each model created in
+ * the last few weeks with at least `minLikes` becomes an item: a new model that is
+ * getting traction, which is how open 3D, texture and audio models arrive.
+ */
+export interface HfModelSpec {
+  lane: Lane;
+  /** Shown in logs. */
+  name: string;
+  /** e.g. `image-to-3d`. At least one of `pipelineTag` and `search` must be set. */
+  pipelineTag?: string;
+  /** Passed to the Hub's `search` parameter, which matches model ids only. */
+  search?: string;
+  minLikes: number;
+}
+
+/** A title gate over Hugging Face Daily Papers, the community-upvoted arXiv digest. */
+export interface HfPapersSpec {
+  lane: Lane;
+  /** Shown in logs. */
+  name: string;
+  /** Matched against the title only; abstracts mention 3D and audio in passing. */
+  include: RegExp;
+  /** Titles that match are skipped, e.g. robotics papers that say "3D" or "motion". */
+  exclude?: RegExp;
+  minUpvotes: number;
+}
+
+export interface HuggingFaceConfig {
+  models: HfModelSpec[];
+  papers: HfPapersSpec[];
+}
+
+/**
+ * A GitHub repository search. Only repositories created in the last few weeks are
+ * searched, ranked by stars, so a new add-on or MCP server taking off is caught.
+ */
+export interface GithubSearchSpec {
+  lane: Lane;
+  /** Shown in logs. */
+  name: string;
+  /** GitHub search syntax, e.g. `blender mcp` or `topic:blender-addon ai`. */
+  query: string;
+  minStars: number;
+}
+
 export interface TwitterListSpec {
   lane: Lane;
   /** Twitter List id owned by the throwaway account. */
@@ -149,6 +195,10 @@ export interface SourcesConfig {
   /** Percent 24h move that makes a price worth an item. */
   priceMovePct: number;
   thresholds: Thresholds;
+  /** New models by pipeline tag or name, and gated Daily Papers. */
+  huggingface: HuggingFaceConfig;
+  /** At most 10 searches: the unauthenticated search limit is 10 a minute. */
+  github: GithubSearchSpec[];
   twitterLists: TwitterListSpec[];
   twitterQueries: TwitterQuerySpec[];
   /** Per-source wall-clock budget inside the runner. */

@@ -153,12 +153,13 @@ describe('buildUserPrompt', () => {
     expect(text).toContain('OPEN STORIES IN THIS LANE: none');
   });
 
-  it('offers both lanes of a lane group and tags each open story with its lane', () => {
+  it('offers every lane of a lane group and tags each open story with its lane', () => {
     const text = buildUserPrompt('ai_dev', [story({ id: 45 }), story({ id: 46, lane: 'ai_dev' })], items);
-    expect(text).toContain('New stories go in ai_dev or ai by content');
+    expect(text).toContain('New stories go in ai_dev, ai or ai_gamedev by content');
     expect(text).toContain('- ai: AI news');
     expect(text).toContain('- ai_dev: making a developer');
-    expect(text).toContain('OPEN STORIES IN LANES ai_dev, ai (2, last 48h)');
+    expect(text).toContain('- ai_gamedev: AI tools and models for making games');
+    expect(text).toContain('OPEN STORIES IN LANES ai_dev, ai, ai_gamedev (2, last 48h)');
     expect(text).toContain('#45 | ai | score 4');
     expect(text).toContain('#46 | ai_dev | score 4');
   });

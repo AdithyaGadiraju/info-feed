@@ -1,18 +1,21 @@
 # info-feed
 
-A personal news digest across six lanes: **ai** (AI News), **ai_dev** (AI Dev), **markets**, **betting**, **gamedev**, **games**.
+A personal news digest across seven lanes: **ai** (AI News), **ai_dev** (AI Dev), **ai_gamedev** (AI Gamedev), **markets**, **betting**, **gamedev**, **games**.
 
-It ingests free sources (RSS, Reddit, Hacker News, Steam, crypto prices, and optionally
+It ingests free sources (RSS, Reddit, Hacker News, Hugging Face, GitHub, Steam, crypto prices, and optionally
 Twitter), uses one Claude call per lane to cluster the raw items into stories with a
 short summary and a 1–5 score, posts the good ones to Discord lane by lane, and serves
 a live scrolling feed behind basic auth.
 
-The two AI lanes split by audience. **ai** (labelled "AI News") is the industry: labs,
+The three AI lanes split by audience. **ai** (labelled "AI News") is the industry: labs,
 models, research, policy. **ai_dev** (labelled "AI Dev") is for building with agentic
-tools: Claude Code, Codex and Cursor changelogs, the blogs where techniques like context,
-harness, loop and goal engineering get coined, and the trade press covering AI tooling
-for game dev, 3D and animation. Lane ids never change once data exists; display names
-live in `LANE_LABELS` in `lib/db/types.ts`.
+tools: Claude Code, Codex and Cursor changelogs, and the blogs where techniques like
+context, harness, loop and goal engineering get coined. **ai_gamedev** (labelled "AI
+Gamedev") is AI tooling for making games: new 3D, texture, sprite, animation and audio
+models, Blender add-ons and MCP servers, and AI assistants for game engines. It is
+deliberately wide, ingesting model hubs, GitHub, vendor sites, papers and communities,
+and the prompt keeps niche releases rather than marking them down. Lane ids never
+change once data exists; display names live in `LANE_LABELS` in `lib/db/types.ts`.
 
 Design decisions live in `docs/adr/`. Read those before changing anything structural;
 each one records what was rejected and why.
@@ -94,10 +97,11 @@ Optional:
 
 | Variable | Notes |
 | --- | --- |
-| `DISCORD_WEBHOOK_URL_<LANE>` | Mirrors that lane to a second channel **in addition to** the main one, never instead of it. `<LANE>` is `AI`, `AI_DEV`, `MARKETS`, `BETTING`, `GAMEDEV` or `GAMES`. |
+| `DISCORD_WEBHOOK_URL_<LANE>` | Mirrors that lane to a second channel **in addition to** the main one, never instead of it. `<LANE>` is `AI`, `AI_DEV`, `AI_GAMEDEV`, `MARKETS`, `BETTING`, `GAMEDEV` or `GAMES`. |
 | `FEED_BASE_URL` | Where the story links in Discord point. Defaults to `http://localhost:3005`. |
 | `PORT` | Port for `next start`. |
 | `RETTIWT_API_KEY` | Twitter. Leave empty to skip it entirely, which is the v1 default. |
+| `GITHUB_TOKEN` | GitHub repository search. A token with no scopes raises the limit from 10 to 30 searches a minute; without one the source searches unauthenticated, 6.5 s apart. |
 | `ANTHROPIC_API_KEY` | Only used when `LLM_TRANSPORT=api`. |
 
 ## Fact-check
@@ -197,8 +201,8 @@ billed, it draws on the Claude subscription's rate-limit window instead.
 
 **The fact-check is not in the figures above, and it costs more than enrichment.**
 Measured on 2026-10-07: three checks cost $0.08, $0.08 and $0.12 and took 19-31s each.
-A digest posts up to 8 stories per lane, so a full six-lane run is up to 48 checks,
-about $4-6 on top. A typical run posts far fewer. `VERIFY_STORIES=off` removes the cost.
+A digest posts up to 8 stories per lane (12 for `ai_gamedev`), so a full run is up
+to 60 checks, about $5-7 on top. A typical run posts far fewer. `VERIFY_STORIES=off` removes the cost.
 
 ## LLM transport
 

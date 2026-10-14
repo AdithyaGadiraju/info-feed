@@ -33,6 +33,8 @@ const baseConfig: SourcesConfig = {
   stocks: [],
   priceMovePct: 5,
   thresholds: { redditMinUpvotes: 0, redditTopN: REDDIT_TOP_N, hnMinPoints: 0, twitterMinLikes: 0 },
+  huggingface: { models: [], papers: [] },
+  github: [],
   twitterLists: [],
   twitterQueries: [],
   sourceTimeoutMs: 20_000,

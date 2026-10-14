@@ -1,4 +1,4 @@
-// prompt version: 6
+// prompt version: 7
 //
 // Bump the number above whenever the system prompt text below changes. ADR 0003
 // calls the prompt "the product": a version marker is what lets a run logged in
@@ -11,7 +11,7 @@
 import { laneGroup, type Item, type Lane, type Story } from '../db/types';
 
 /** Mirrors the `prompt version` comment above; logged with every run so a story can be traced to its wording. */
-export const PROMPT_VERSION = 6;
+export const PROMPT_VERSION = 7;
 
 /** ADR 0003: bodies are capped so a 60-item batch has a bounded input cost. */
 export const MAX_BODY_CHARS = 2000;
@@ -20,7 +20,9 @@ const LANE_NOTES: Record<Lane, string> = {
   ai:
     "AI news, meaning everything about AI that does not help the reader get better results from AI tools: labs and the industry, funding and acquisitions, policy and regulation, AI security incidents and vulnerabilities (including ones in coding tools), hardware and infrastructure, models with no coding use, general research, and benchmarks and leaderboards (Arena, SWE-bench, ARC-AGI, Humanity's Last Exam, Epoch AI and similar). Score benchmark news by what it shows: a model taking #1 on a major leaderboard, the first results for a newly released frontier model, or a new benchmark that labs start reporting is 4 or 5; small rank shuffles among older models and self-reported numbers with no new model behind them are 2 or 3",
   ai_dev:
-    "making a developer or game developer better and faster with AI. It covers how to get better results from a model or coding agent: official prompting and best-practice guides, and workflow and technique write-ups on CLAUDE.md and AGENTS.md, skills, subagents, hooks, context management, planning, verification loops and parallel agents. It covers ways to cut tokens, cost or latency. It covers plugins, skills, MCP servers and tools that raise code quality or throughput. It covers models a developer could code with: releases, availability in Claude Code, Codex, Copilot or Cursor, price and limit changes, and hands-on coding comparisons. It covers technical research on how an LLM feature behaves when that changes how to use it. It covers AI game development: coding agents and MCP servers for game engines (Godot, Unity, Unreal, Roblox), engine vendors' own AI features, and AI asset generation for games (3D models, textures, sprites and pixel art, rigging and animation, audio and voice, levels and worlds). Judge game asset tools by whether the output is usable in a shipped game: clean topology, rigging, PBR materials, an engine export path, a licence that allows commercial use, and evidence from real tests. A demo with no export path or a showcase with no method is 1 or 2. Score by how much the story would change how the reader works this week: an official prompting or best-practices guide for a current model, a coding-capable frontier model release, or a tool or technique with evidence that it cuts tokens or raises quality is 4 or 5; a solid practitioner technique or a useful new tool is 3 or 4; routine changelog versions, minor integrations, tool launches with no evidence, community anecdotes and opinion about the future of coding are 1 or 2",
+    "making a developer better and faster with AI coding tools. It covers how to get better results from a model or coding agent: official prompting and best-practice guides, and workflow and technique write-ups on CLAUDE.md and AGENTS.md, skills, subagents, hooks, context management, planning, verification loops and parallel agents. It covers ways to cut tokens, cost or latency. It covers plugins, skills, MCP servers and tools that raise code quality or throughput. It covers models a developer could code with: releases, availability in Claude Code, Codex, Copilot or Cursor, price and limit changes, and hands-on coding comparisons. It covers technical research on how an LLM feature behaves when that changes how to use it. AI tools for game engines and game assets go in ai_gamedev. Score by how much the story would change how the reader works this week: an official prompting or best-practices guide for a current model, a coding-capable frontier model release, or a tool or technique with evidence that it cuts tokens or raises quality is 4 or 5; a solid practitioner technique or a useful new tool is 3 or 4; routine changelog versions, minor integrations, tool launches with no evidence, community anecdotes and opinion about the future of coding are 1 or 2",
+  ai_gamedev:
+    "AI tools and models for making games. The reader is a solo developer who builds in Godot 4 with C# and models in Blender. It covers models and tools that generate game assets: text-to-3D and image-to-3D (Hunyuan3D, TRELLIS, Tripo, Rodin, Meshy and new open-weights models), textures and PBR materials, concept art, 2D art, sprites, pixel art and tilesets, rigging, animation, motion capture and retargeting, sound effects, music and voice, skyboxes, levels and worlds, gaussian splatting and world models. It covers Blender add-ons and MCP servers that let a model build, rig, texture or script in Blender; coding agents, MCP servers and assistants for game engines (Godot, Unity, Unreal, Roblox) and engine vendors' own AI features; runtime AI for games (NPCs, dialogue, AI-driven procedural generation) when it ships as a tool or SDK; and papers that release code or weights for any of these. The reader wants every new tool and model here, including niche ones from small teams and solo developers, so never drop or mark down a release for being obscure or new. Judge an asset tool by whether its output could go in a shipped game: an export path (GLB, FBX, OBJ, PNG sheets, WAV), clean topology, rigging, PBR maps, consistent style across sprites, a licence that allows commercial use, and evidence from real tests. Score by how much it could change how the reader makes a game: a new model or major version that beats the previous best for an asset type, or a Blender or engine integration that turns a prompt into a usable asset, is 5; any new tool, model, add-on or MCP server that produces something usable in a game, even a niche one, is 4; a paper with code or weights, a notable update to an existing tool, or a hands-on comparison or workflow write-up is 3; a showcase with no tool or method behind it, a demo nobody can use, funding with no product, and opinion about AI in games are 1 or 2. Lawsuits, layoffs, policy and platform rules about AI in games go in ai",
   markets: 'crypto and macro markets, prices, regulation, exchanges',
   betting: 'sports betting, odds, bookmakers, betting models and datasets, MMA and UFC markets',
   gamedev:
@@ -44,6 +46,7 @@ the main job.
 THE LANES
 - ai: ${LANE_NOTES.ai}
 - ai_dev: ${LANE_NOTES.ai_dev}
+- ai_gamedev: ${LANE_NOTES.ai_gamedev}
 - markets: ${LANE_NOTES.markets}
 - betting: ${LANE_NOTES.betting}
 - gamedev: ${LANE_NOTES.gamedev}
@@ -88,12 +91,15 @@ HARD RULES
 2. Use only item ids from the batch below and only story ids from the open-stories
    list below. Never invent an id.
 3. "lane" on a new story is the lane named in the batch header, with one
-   exception: in an ai or ai_dev batch, choose ai or ai_dev by what the story is
-   about, not by where the item came from. A story that helps the reader get better
-   results from AI tools goes in ai_dev; everything else about AI goes in ai. A
-   security incident in a coding tool, an acquisition or a policy fight is ai even
-   when it arrived from a coding-tool feed. Items in these batches may also attach
-   to an open story in either lane.
+   exception: in an ai, ai_dev or ai_gamedev batch, choose among those three by
+   what the story is about, not by where the item came from. AI tools, models and
+   techniques for making games and game assets go in ai_gamedev; a story that
+   helps the reader get better results from AI coding tools goes in ai_dev;
+   everything else about AI goes in ai. A security incident in a coding tool, an
+   acquisition or a policy fight is ai even when it arrived from a coding-tool
+   feed, and a Blender MCP server is ai_gamedev even when it arrived from an AI
+   news feed. Items in these batches may also attach to an open story in any of
+   the three lanes.
 4. Every new story must have at least one item behind it.
 5. Every "newStory" object carries all five keys every time: lane, title,
    summaryShort, summaryDetail and score. "score" is the one most often left out
@@ -117,6 +123,10 @@ SUMMARIES
   names the one concrete thing to apply: the setting, prompt pattern, file, command,
   plugin or model to use, and where. If you cannot name one, the story either
   belongs in ai or deserves a lower score.
+- In an ai_gamedev story, the detail says how to get the tool (open weights, API,
+  paid app, add-on, repo), what it costs if the items say, and what it exports.
+  It ends with a "**Try this:**" line naming where to try it (a Hugging Face
+  space, an API page, a repo, an add-on) and one asset to test it on.
 
 SCORE RUBRIC
 5 = major: a frontier model release, an engine major version, a market-moving
@@ -139,7 +149,9 @@ a string when the new score is 3 or higher, null when it is 1 or 2.
 
 DROPPING
 Put an item in "dropped" when it is advertising, a giveaway, a meme, engagement
-bait, a job post, a self-promotion thread, or has no substance worth a story. Being
+bait, a job post, a self-promotion thread, or has no substance worth a story. One
+exception: in ai_gamedev, a developer announcing a tool, model or add-on they
+built is a release, not self-promotion; keep it when people can use the tool. Being
 a duplicate is not a reason to drop: duplicates get attached to the story they
 duplicate. Never create a placeholder story: an item you cannot summarise from its
 title and body is dropped.`;
@@ -217,7 +229,7 @@ export function buildUserPrompt(lane: Lane, openStories: Story[], pendingItems: 
       ? `OPEN STORIES ${where} (${openStories.length}, last 48h)\n${serialiseStories(openStories, grouped)}`
       : `OPEN STORIES ${where}: none`;
   const laneLine = grouped
-    ? `Lane: ${lane}. New stories go in ${group.join(' or ')} by content (hard rule 3).\n` +
+    ? `Lane: ${lane}. New stories go in ${group.slice(0, -1).join(', ')} or ${group.at(-1)} by content (hard rule 3).\n` +
       group.map((l) => `- ${l}: ${LANE_NOTES[l]}`).join('\n')
     : `Lane: ${lane} — ${LANE_NOTES[lane]}`;
 

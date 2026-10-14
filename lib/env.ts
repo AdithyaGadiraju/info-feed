@@ -90,4 +90,8 @@ export const env = {
   get rettiwtApiKey(): string | undefined {
     return opt('RETTIWT_API_KEY');
   },
+  /** Optional. Raises GitHub's search limit from 10 to 30 requests a minute. */
+  get githubToken(): string | undefined {
+    return opt('GITHUB_TOKEN');
+  },
 };

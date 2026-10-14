@@ -84,7 +84,7 @@ interface LaneOutcome {
  *
  * Ingestion is the one stage that must not overlap. Reddit's limit is a single
  * per-address budget (lib/sources/reddit.ts spaces its own requests for that
- * reason), so six lanes fetching at once would get the whole address throttled.
+ * reason), so seven lanes fetching at once would get the whole address throttled.
  */
 function serialQueue(): <T>(task: () => Promise<T>) => Promise<T> {
   let tail: Promise<unknown> = Promise.resolve();

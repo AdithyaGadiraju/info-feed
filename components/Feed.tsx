@@ -145,7 +145,7 @@ export default function Feed({
 
   const toggleLane = (lane: Lane) => {
     // Chips are a single-select "All | lane" switch: on a phone, a multi-select
-    // of six lanes is fiddly and nothing in the ADR asks for combinations.
+    // of seven lanes is fiddly and nothing in the ADR asks for combinations.
     applyFilters(lanes.length === 1 && lanes[0] === lane ? [] : [lane], minScore);
   };
 

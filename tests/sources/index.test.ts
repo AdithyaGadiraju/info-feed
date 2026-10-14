@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { closeDb, db } from '../../lib/db/client';
 import { getPendingItems } from '../../lib/db/queries';
 import { EXCLUDED_STORY_ID, type Lane } from '../../lib/db/types';
-import { ingest, shouldExclude } from '../../lib/sources/index';
+import { allSources, ingest, shouldExclude } from '../../lib/sources/index';
 import type { RawItem, Source, SourcesConfig } from '../../lib/sources/types';
 import { sourcesConfig } from '../../config/sources';
 
@@ -59,7 +59,7 @@ describe('ingest (live)', () => {
     const result = await ingest({ lanes: ['ai'], since, maxBodies: 3, job: TEST_JOB });
 
     expect(result.runId).toBeGreaterThan(0);
-    expect(result.sources.length).toBe(7);
+    expect(result.sources.length).toBe(allSources.length);
     expect(result.fetched).toBeGreaterThan(0);
     expect(result.stored).toBeGreaterThan(0);
 

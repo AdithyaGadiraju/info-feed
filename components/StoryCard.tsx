@@ -62,6 +62,7 @@ export function reviveStoryWithItems(r: WireStoryWithItems): StoryWithItems {
 const LANE_CLASS: Record<Lane, string> = {
   ai: 'text-lane-ai',
   ai_dev: 'text-lane-ai_dev',
+  ai_gamedev: 'text-lane-ai_gamedev',
   markets: 'text-lane-markets',
   betting: 'text-lane-betting',
   gamedev: 'text-lane-gamedev',
