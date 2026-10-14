@@ -33,10 +33,15 @@ export function parseLlmsTxt(text: string): DocsPage[] {
   return pages;
 }
 
-/** "run-long-horizon-tasks-with-codex" -> "Run long horizon tasks with codex". */
+/**
+ * The path after its first segment, so the vendor and version survive:
+ * "/blog/run-long-horizon-tasks-with-codex" -> "Run long horizon tasks with codex",
+ * "/models/meshy/v7.1/image-to-3d" -> "Meshy v7.1 image to 3d".
+ */
 function titleFromSlug(url: string): string {
   const segments = new URL(url).pathname.split('/').filter(Boolean);
-  const slug = decodeURIComponent(segments.at(-1) ?? url).replace(/[-_]+/g, ' ').trim();
+  const kept = segments.length > 1 ? segments.slice(1) : segments;
+  const slug = decodeURIComponent(kept.join(' ') || url).replace(/[-_]+/g, ' ').trim();
   return slug.charAt(0).toUpperCase() + slug.slice(1);
 }
 

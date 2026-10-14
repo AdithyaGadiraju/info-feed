@@ -41,6 +41,8 @@ export interface Source {
    * it silently instead of sending every existing page to the model.
    */
   snapshot?: boolean;
+  /** Overrides `sourceTimeoutMs` for a source that must pace itself, e.g. Reddit. */
+  timeoutMs?: number;
 }
 
 // ---- config shape ----
@@ -77,6 +79,11 @@ export interface SubredditSpec {
   sub: string;
   /** When set, only posts whose title matches count towards `redditTopN`. */
   include?: RegExp;
+  /**
+   * Fetch on its own rather than in the lane's combined listing. For a small
+   * subreddit that the lane's big ones would crowd out of the 100 shared slots.
+   */
+  solo?: boolean;
 }
 
 export interface HnQuerySpec {

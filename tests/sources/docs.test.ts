@@ -24,10 +24,12 @@ describe('parseLlmsTxt', () => {
 describe('parseSitemap', () => {
   it('reads <loc> URLs and titles them from the slug', () => {
     const xml = `<urlset><url><loc>https://developers.openai.com/blog/run-long-horizon-tasks-with-codex</loc><lastmod>2026-10-01</lastmod></url>
-      <url><loc> https://cursor.com/blog/improved-token-efficiency/ </loc></url></urlset>`;
+      <url><loc> https://cursor.com/blog/improved-token-efficiency/ </loc></url>
+      <url><loc>https://fal.ai/models/meshy/v7.1/image-to-3d</loc></url></urlset>`;
     expect(parseSitemap(xml)).toEqual([
       { url: 'https://developers.openai.com/blog/run-long-horizon-tasks-with-codex', title: 'Run long horizon tasks with codex' },
       { url: 'https://cursor.com/blog/improved-token-efficiency/', title: 'Improved token efficiency' },
+      { url: 'https://fal.ai/models/meshy/v7.1/image-to-3d', title: 'Meshy v7.1 image to 3d' },
     ]);
   });
 });

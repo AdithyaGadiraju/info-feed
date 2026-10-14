@@ -16,7 +16,7 @@
  * full.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
-import reddit, { mapEntries, type RedditEntry } from '../../lib/sources/reddit';
+import reddit, { groupBySubreddit, mapEntries, nextRequestDelayMs, type RedditEntry } from '../../lib/sources/reddit';
 import type { RawItem, SourceCtx, SourcesConfig } from '../../lib/sources/types';
 
 const REDDIT_TOP_N = 10;
@@ -187,6 +187,25 @@ describe('reddit entry mapping (fixture, no network)', () => {
       isoDate: '2026-09-13T00:00:00.000Z',
     }));
     expect(mapEntries(many, spec, ctx)).toHaveLength(REDDIT_TOP_N);
+  });
+
+  it("waits out Reddit's rate-limit window once the budget is spent", () => {
+    expect(nextRequestDelayMs('0.0', '8')).toBe(30_000);
+    expect(nextRequestDelayMs('0.0', '44')).toBe(45_000);
+    expect(nextRequestDelayMs('0.0', '600')).toBe(60_000);
+    expect(nextRequestDelayMs('3.0', '8')).toBe(30_000);
+    expect(nextRequestDelayMs(null, null)).toBe(30_000);
+  });
+
+  it('splits a combined listing by the subreddit in each permalink, keeping hot order', () => {
+    const groups = groupBySubreddit([
+      { id: 'a', link: 'https://www.reddit.com/r/ClaudeCode/comments/a/x/' },
+      { id: 'b', link: 'https://www.reddit.com/r/codex/comments/b/y/' },
+      { id: 'c', link: 'https://www.reddit.com/r/ClaudeCode/comments/c/z/' },
+      { id: 'd' },
+    ]);
+    expect([...groups.keys()]).toEqual(['claudecode', 'codex']);
+    expect(groups.get('claudecode')?.map((e) => e.id)).toEqual(['a', 'c']);
   });
 
   it('applies a title gate before the rank cutoff', () => {

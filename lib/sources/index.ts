@@ -187,7 +187,7 @@ export async function ingest(opts: IngestOptions): Promise<IngestResult> {
         try {
           const items = await withTimeout(
             source.fetch({ since: opts.since, config, lanes }),
-            config.sourceTimeoutMs,
+            source.timeoutMs ?? config.sourceTimeoutMs,
           );
           return { items, durationMs: Date.now() - sourceStartedAt };
         } catch (err) {

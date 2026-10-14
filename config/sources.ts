@@ -6,6 +6,9 @@
 import { LANES } from '../lib/db/types';
 import type { SourcesConfig } from '../lib/sources/types';
 
+/** Title gate for broad creative-AI feeds: keep only posts about game-usable assets. */
+const ASSET_TOPICS = /\b3d\b|trellis|hunyuan|pixal3d|mesh|texture|pbr|sprite|pixel art|audio|music|sfx|sound effect|rigg|splat|world model/i;
+
 /** Title gate for subreddits where agent technique is a small share of posts. */
 const AGENT_TECHNIQUE = /plugin|skill|hook|subagent|mcp|token|claude\.md|agents\.md|workflow|tips?\b|context|i built|cost/i;
 
@@ -67,6 +70,29 @@ export const sourcesConfig: SourcesConfig = {
     { lane: 'ai_dev', name: 'Godot AI (MCP) releases', url: 'https://github.com/hi-godot/godot-ai/releases.atom' },
     { lane: 'ai_dev', name: 'Ziva (Godot AI)', url: 'https://ziva.sh/feed.xml' },
     { lane: 'ai_dev', name: 'Kyle Kukshtel', url: 'https://kylekukshtel.com/feed.rss' },
+    // -- AI game development, researched and verified live on 2026-10-14. Engine
+    // vendors' own AI announcements first: official and accurate, so worth a
+    // title filter on otherwise noisy feeds. The Unity blog also feeds gamedev
+    // below; a post in both keeps the first lane listed, so its AI posts land here.
+    { lane: 'ai_dev', name: 'Unity blog (AI)', url: 'https://blog.unity.com/feed', include: /\b(AI|assistant|agent|MCP|Claude|Codex|Copilot|Cursor|Gemini|CLI|Muse|Sentis)\b/i },
+    { lane: 'ai_dev', name: 'Roblox announcements (AI)', url: 'https://devforum.roblox.com/c/updates/announcements/36.rss', include: /assistant|\bMCP\b|\bAI\b|generat|agent|LLM|procedural models/i },
+    { lane: 'ai_dev', name: 'Unreal announcements (AI)', url: 'https://forums.unrealengine.com/c/general/announcements/49.rss', include: /\bMCP\b|\bAI\b|agent|assistant|LLM/i },
+    { lane: 'ai_dev', name: 'Godot forum plugins (AI)', url: 'https://forum.godotengine.org/c/resources/plugins/21.rss', include: /\bMCP\b|\bAI\b|claude|codex|agent|LLM/i },
+    { lane: 'ai_dev', name: 'Godot forum tools (AI)', url: 'https://forum.godotengine.org/c/showcase/tools/16.rss', include: /\bMCP\b|\bAI\b|claude|codex|agent|LLM/i },
+    // -- analysts and practitioners writing about AI game development
+    { lane: 'ai_dev', name: 'Naavik (AI gaming)', url: 'https://naavik.co/category/ai-gaming/feed/' },
+    { lane: 'ai_dev', name: 'AI Gamechangers', url: 'https://aigamechangers.substack.com/feed' },
+    { lane: 'ai_dev', name: 'GamesIndustry.biz (AI)', url: 'https://www.gamesindustry.biz/feed', include: /\bAI\b|generative|LLM|machine learning|Claude|Codex|agentic/i },
+    { lane: 'ai_dev', name: 'Games Alchemy', url: 'https://gamesalchemy.substack.com/feed', include: /\bAI\b/i },
+    { lane: 'ai_dev', name: 'Game Dev Dairy', url: 'https://gamedevdairy.substack.com/feed', include: /\bAI\b|vibe|Claude|agent|LLM/i },
+    // -- asset generation: 3D, textures, sprites, motion, audio. Most vendors have
+    // no feed; the docs watches below cover the ones with a usable sitemap.
+    { lane: 'ai_dev', name: 'ComfyUI blog (assets)', url: 'https://blog.comfy.org/feed', include: ASSET_TOPICS, exclude: /challenge/i },
+    { lane: 'ai_dev', name: 'pixaroma (YouTube)', url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCmMbwA-s3GZDKVzGZ-kPwaQ', include: ASSET_TOPICS },
+    { lane: 'ai_dev', name: 'ElevenLabs (audio models)', url: 'https://elevenlabs.io/blog/rss.xml', include: /^introducing (eleven v\d|music|sound)|sound effects?|\bsfx\b|music v\d|\bgames?\b/i },
+    { lane: 'ai_dev', name: 'Stability AI (audio, 3D)', url: 'https://stability.ai/news-updates?format=rss', include: /stable audio|3d|game/i },
+    // arXiv papers on assets a game can ship: PBR, textures, rigging, sprites, low-poly.
+    { lane: 'ai_dev', name: 'arXiv (game asset generation)', url: 'http://export.arxiv.org/api/query?search_query=(cat:cs.CV%20OR%20cat:cs.GR)%20AND%20(ti:%22PBR%22%20OR%20ti:%22texture%20generation%22%20OR%20ti:%22auto-rigging%22%20OR%20ti:%22pixel%20art%22%20OR%20ti:sprite%20OR%20ti:%22game%20asset%22%20OR%20ti:%22low-poly%22%20OR%20ti:retopology)&sortBy=submittedDate&sortOrder=descending&max_results=25' },
     // gamedev
     // -- engine first-party blogs, verified live on 2026-09-18. The prompt scores
     // patch and QOL releases as noise, so these can stay unfiltered. O3DE has no
@@ -112,6 +138,14 @@ export const sourcesConfig: SourcesConfig = {
     { lane: 'ai_dev', name: 'OpenAI developer docs', url: 'https://developers.openai.com/sitemap-0.xml', format: 'sitemap', prefixes: ['/blog/', '/cookbook/examples/', '/api/docs/guides/'] },
     // Cursor's blog feed stopped in 2024; its sitemap still lists every post.
     { lane: 'ai_dev', name: 'Cursor blog', url: 'https://cursor.com/sitemap.xml', format: 'sitemap', prefixes: ['/blog/'] },
+    // AI game development. fal.ai hosts most 3D and audio models days after release,
+    // so a new model page there is the earliest reliable signal across vendors.
+    { lane: 'ai_dev', name: 'fal.ai 3D and audio models', url: 'https://fal.ai/sitemap.xml', format: 'sitemap', prefixes: ['/models/meshy/', '/models/fal-ai/meshy', '/models/tripo3d/', '/models/hitem3d/', '/models/fal-ai/hyper3d/', '/models/fal-ai/hunyuan3d', '/models/fal-ai/hunyuan-3d', '/models/fal-ai/hunyuan-motion', '/models/fal-ai/hunyuan_world', '/models/fal-ai/trellis', '/models/fal-ai/stable-audio', '/models/mirelo-ai/', '/models/sonilo/', '/models/elevenlabs/'] },
+    { lane: 'ai_dev', name: 'Meshy launches', url: 'https://www.meshy.ai/llms.txt', format: 'llms', prefixes: ['/blog/meshy-'] },
+    { lane: 'ai_dev', name: 'Scenario', url: 'https://www.scenario.com/sitemap.xml', format: 'sitemap', prefixes: ['/blog/', '/explorations/'] },
+    { lane: 'ai_dev', name: 'World Labs', url: 'https://www.worldlabs.ai/sitemap.xml', format: 'sitemap', prefixes: ['/blog/', '/labs/learn/'] },
+    { lane: 'ai_dev', name: 'Uthana', url: 'https://uthana.com/sitemap.xml', format: 'sitemap', prefixes: ['/blog/'] },
+    { lane: 'ai_dev', name: 'Bezi', url: 'https://www.bezi.com/sitemap.xml', format: 'sitemap', prefixes: ['/blog/'] },
   ],
 
   subreddits: [
@@ -122,12 +156,12 @@ export const sourcesConfig: SourcesConfig = {
     { lane: 'ai_dev', sub: 'ClaudeCode' },
     // Mostly news and complaints; the gate keeps tool and technique posts.
     { lane: 'ai_dev', sub: 'ClaudeAI', include: AGENT_TECHNIQUE },
-    { lane: 'ai_dev', sub: 'PromptEngineering', include: AGENT_TECHNIQUE },
     { lane: 'ai_dev', sub: 'codex' },
     { lane: 'ai_dev', sub: 'cursor' },
     { lane: 'ai_dev', sub: 'ChatGPTCoding' },
     // r/aigamedev posts ~60 a day, mostly showcases; the gate keeps workflow posts.
-    { lane: 'ai_dev', sub: 'aigamedev', include: /claude|codex|cursor|mcp|agents?\.md|workflow|pipeline|godot|unity|unreal|blender|prompt|context|skill/i },
+    // Solo: in the lane's combined listing it got 8 of 100 slots, and the gate left none.
+    { lane: 'ai_dev', sub: 'aigamedev', solo: true, include: /claude|codex|cursor|mcp|agents?\.md|workflow|pipeline|godot|unity|unreal|blender|prompt|context|skill/i },
     { lane: 'gamedev', sub: 'gamedev' },
     { lane: 'gamedev', sub: 'godot' },
     { lane: 'gamedev', sub: 'gameenginedevs' },
@@ -154,6 +188,12 @@ export const sourcesConfig: SourcesConfig = {
     { lane: 'ai_dev', query: 'godot mcp', allWords: true },
     { lane: 'ai_dev', query: 'unreal mcp', allWords: true },
     { lane: 'ai_dev', query: 'blender mcp', allWords: true },
+    { lane: 'ai_dev', query: 'unity mcp', allWords: true },
+    { lane: 'ai_dev', query: 'godot llm', allWords: true },
+    { lane: 'ai_dev', query: 'game development ai', allWords: true },
+    { lane: 'ai_dev', query: 'Hunyuan3D', allWords: true },
+    { lane: 'ai_dev', query: 'TRELLIS.2', allWords: true },
+    { lane: 'ai_dev', query: 'gaussian splatting', allWords: true },
     // Show HN titles: where plugins and agent tools launch. Sampled 2026-10-14,
     // about 85% of matches at 10+ points were dev-agent tools. 'mcp' is left out:
     // it pulls in CAD tools and DAWs that merely expose an MCP server.
