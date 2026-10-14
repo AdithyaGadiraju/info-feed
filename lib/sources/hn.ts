@@ -4,7 +4,7 @@
  * keyword search per lane from `ctx.config.hnQueries` (already lane-scoped).
  */
 import type { Lane } from '../db/types';
-import type { RawItem, Source, SourceCtx } from './types';
+import type { HnQuerySpec, RawItem, Source, SourceCtx } from './types';
 
 const ALGOLIA_BASE = 'https://hn.algolia.com/api/v1';
 const FRONT_PAGE_HITS_PER_PAGE = 50;
@@ -95,14 +95,17 @@ async function fetchFrontPage(ctx: SourceCtx): Promise<RawItem[]> {
  * window by `numericFilters`, actually surfaces the on-topic stories.
  */
 async function fetchLaneQuery(
-  spec: { lane: Lane; query: string },
+  spec: HnQuerySpec,
   ctx: SourceCtx,
 ): Promise<RawItem[]> {
   const sinceSeconds = Math.floor(ctx.since.getTime() / 1000);
   const url =
     `${ALGOLIA_BASE}/search?query=${encodeURIComponent(spec.query)}` +
-    `&tags=story&numericFilters=created_at_i>${sinceSeconds}` +
-    `&removeWordsIfNoResults=allOptional&hitsPerPage=${QUERY_HITS_PER_PAGE}`;
+    (spec.showHn ? '&tags=show_hn&restrictSearchableAttributes=title' : '&tags=story') +
+    `&numericFilters=created_at_i>${sinceSeconds}` +
+    // Typo tolerance would read "codex" as "code" and match every coding story.
+    `${spec.allWords ? '&typoTolerance=false' : '&removeWordsIfNoResults=allOptional'}` +
+    `&hitsPerPage=${QUERY_HITS_PER_PAGE}`;
   const hits = await fetchAlgolia(url, ctx.config.sourceTimeoutMs);
   return hits.map((hit) => toRawItem(hit, spec.lane));
 }

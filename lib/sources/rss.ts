@@ -74,6 +74,8 @@ async function fetchFeed(feed: FeedSpec, ctx: SourceCtx): Promise<RawItem[]> {
     const url = entry.link;
     const title = entry.title?.trim();
     if (!url || !title) continue;
+    if (feed.include && !feed.include.test(title)) continue;
+    if (feed.exclude?.test(title)) continue;
 
     // guid over link: some feeds reuse a canonical link across items (e.g. a
     // redesign) while the guid stays stable, so guid is the safer dedupe key.

@@ -32,8 +32,15 @@ export interface SourceCtx {
 }
 
 export interface Source {
-  name: 'rss' | 'reddit' | 'hn' | 'steam' | 'prices' | 'twitter';
+  name: 'rss' | 'reddit' | 'hn' | 'steam' | 'prices' | 'twitter' | 'docs';
   fetch(ctx: SourceCtx): Promise<RawItem[]>;
+  /**
+   * The source returns its whole current listing every run rather than what is new
+   * since `ctx.since`. The runner then stores only ids it has never seen, and
+   * stores the first listing of each `author` as excluded, so adding a watch seeds
+   * it silently instead of sending every existing page to the model.
+   */
+  snapshot?: boolean;
 }
 
 // ---- config shape ----
@@ -43,17 +50,46 @@ export interface FeedSpec {
   url: string;
   /** Shown in logs and used as a fallback author. */
   name: string;
+  /** When set, only items whose title matches are kept. */
+  include?: RegExp;
+  /** Items whose title matches are skipped, e.g. a feed's glossary stubs. */
+  exclude?: RegExp;
+}
+
+/**
+ * A docs site watched for new pages. Docs sites publish no feed, and their
+ * sitemaps carry no usable lastmod (platform.claude.com has none, code.claude.com
+ * restamps pages daily), so a new URL appearing in the listing is the signal.
+ */
+export interface DocsWatchSpec {
+  lane: Lane;
+  /** Stored as the item's author; the runner seeds each name once. */
+  name: string;
+  url: string;
+  /** `llms` reads `- [Title](url): description` lines; `sitemap` reads `<loc>` URLs. */
+  format: 'llms' | 'sitemap';
+  /** URL path prefixes to keep, e.g. `/docs/en/build-with-claude/`. */
+  prefixes: string[];
 }
 
 export interface SubredditSpec {
   lane: Lane;
   sub: string;
+  /** When set, only posts whose title matches count towards `redditTopN`. */
+  include?: RegExp;
 }
 
 export interface HnQuerySpec {
   lane: Lane;
   /** Passed to the Algolia `query` parameter. */
   query: string;
+  /**
+   * Require every word. By default a query is an OR of its terms, so "godot mcp"
+   * would match any story mentioning Godot; a phrase query needs all of them.
+   */
+  allWords?: boolean;
+  /** Search Show HN posts by title only: where new plugins and agent tools launch. */
+  showHn?: boolean;
 }
 
 export interface TwitterListSpec {
@@ -83,6 +119,8 @@ export interface Thresholds {
   /** Kept for the OAuth follow-up, when vote counts become available again. */
   redditMinUpvotes: number;
   hnMinPoints: number;
+  /** Lanes whose Hacker News stories pass at a lower bar than `hnMinPoints`. */
+  hnMinPointsByLane?: Partial<Record<Lane, number>>;
   twitterMinLikes: number;
 }
 
@@ -91,6 +129,7 @@ export interface SourcesConfig {
   /** Digest posting order (ADR 0004). */
   laneOrder: readonly Lane[];
   feeds: FeedSpec[];
+  docs: DocsWatchSpec[];
   subreddits: SubredditSpec[];
   /** Algolia HN front-page fetch plus these per-lane keyword searches. */
   hnQueries: HnQuerySpec[];

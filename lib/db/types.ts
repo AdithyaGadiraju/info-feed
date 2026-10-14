@@ -16,6 +16,21 @@ export const LANE_LABELS: Record<Lane, string> = {
   games: 'Games',
 };
 
+/**
+ * Lanes that are enriched as one pool. A source's lane is only a hint for these:
+ * the model sees open stories from every lane in the group and files each new
+ * story under whichever lane its content belongs to. ai and ai_dev share sources
+ * (Hacker News, Reddit, lab blogs) and differ by what a story is about, not where
+ * it came from, so a security incident from a coding-tool feed still lands in ai.
+ */
+const LANE_GROUPS: ReadonlyArray<readonly Lane[]> = [['ai', 'ai_dev']];
+
+/** The lanes enriched together with `lane`, `lane` first. A lane with no group returns itself. */
+export function laneGroup(lane: Lane): Lane[] {
+  const group = LANE_GROUPS.find((g) => g.includes(lane));
+  return group ? [lane, ...group.filter((l) => l !== lane)] : [lane];
+}
+
 export function isLane(v: string): v is Lane {
   return (LANES as readonly string[]).includes(v);
 }

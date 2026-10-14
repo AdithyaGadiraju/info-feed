@@ -7,9 +7,10 @@
  * how to talk to its own upstream and hand back RawItems.
  */
 import { sourcesConfig } from '../../config/sources';
-import { finishRun, setItemBodies, startRun, upsertItems } from '../db/queries';
+import { finishRun, getSnapshotState, setItemBodies, startRun, upsertItems } from '../db/queries';
 import { EXCLUDED_STORY_ID, type NewItem } from '../db/types';
 import { fetchBodies } from '../fetchBody';
+import docs from './docs';
 import hn from './hn';
 import prices from './prices';
 import reddit from './reddit';
@@ -19,7 +20,7 @@ import twitter from './twitter';
 import type { Lane, RawItem, Source, SourcesConfig, Thresholds } from './types';
 
 /** Fetch order is irrelevant (they run concurrently); this is reporting order. */
-export const allSources: Source[] = [rss, reddit, hn, steam, prices, twitter];
+export const allSources: Source[] = [rss, docs, reddit, hn, steam, prices, twitter];
 
 /**
  * A ceiling on body extraction per run. Bodies are the slowest part of ingestion
@@ -123,7 +124,7 @@ export function shouldExclude(
     case 'hn': {
       const points = engagement?.points;
       if (typeof points !== 'number') return false;
-      return points < thresholds.hnMinPoints;
+      return points < (thresholds.hnMinPointsByLane?.[item.laneHint] ?? thresholds.hnMinPoints);
     }
     case 'twitter': {
       const likes = engagement?.likes;
@@ -226,9 +227,20 @@ export async function ingest(opts: IngestOptions): Promise<IngestResult> {
       // never asked for; drop it here rather than teaching every source to care.
       const inLane = lanes ? raw.filter((item) => lanes.includes(item.laneHint)) : raw;
 
+      let fresh = inLane;
+      const seeding = new Set<string>();
+      if (source.snapshot && inLane.length > 0) {
+        // Known ids are left out of the upsert entirely: re-writing a seeded row
+        // would flip its excluded sentinel back to pending (see upsertItems).
+        const state = await getSnapshotState(inLane[0].source, inLane.map((i) => i.externalId));
+        fresh = inLane.filter((i) => !state.known.has(i.externalId));
+        for (const i of fresh) if (!state.authors.has(i.author ?? '')) seeding.add(i.externalId);
+      }
+
       const excluded = new Set<string>();
-      const toWrite: NewItem[] = inLane.map((item) => {
-        const isExcluded = shouldExclude(source.name, item, config.thresholds);
+      const toWrite: NewItem[] = fresh.map((item) => {
+        const isExcluded =
+          seeding.has(item.externalId) || shouldExclude(source.name, item, config.thresholds);
         if (isExcluded) excluded.add(item.externalId);
         return {
           source: item.source,

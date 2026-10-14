@@ -14,7 +14,7 @@ import {
   getPendingItems,
   startRun,
 } from '../db/queries';
-import type { Item, Lane, Story } from '../db/types';
+import { laneGroup, type Item, type Lane, type Story } from '../db/types';
 import { buildSystemPrompt, buildUserPrompt, PROMPT_VERSION } from './prompt';
 import { extractJsonObject, validateEnrichResult } from './schema';
 import {
@@ -199,7 +199,7 @@ export async function enrichLane(
       const items = await getPendingItems(lane, take);
       if (items.length === 0) break;
 
-      const stories = await getOpenStories(lane, OPEN_STORY_HOURS, OPEN_STORY_MAX);
+      const stories = await getOpenStories(laneGroup(lane), OPEN_STORY_HOURS, OPEN_STORY_MAX);
       const chunk = await enrichChunk(lane, items, stories);
       out.usage.push(...chunk.usage);
       out.costUsd += chunk.costUsd;

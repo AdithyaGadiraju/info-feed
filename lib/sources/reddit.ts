@@ -130,7 +130,10 @@ export function mapEntries(entries: RedditEntry[], spec: SubredditSpec, ctx: Sou
   // carries no vote/comment counts to re-rank by. Taking the top N entries is the
   // same cost control as the old upvote threshold, expressed as a rank cutoff
   // instead of a vote count (config: thresholds.redditTopN).
-  const topN = entries.slice(0, ctx.config.thresholds.redditTopN);
+  // A title gate runs before the cutoff, so a busy subreddit's top N are its top
+  // N on-topic posts rather than whatever happened to be hot.
+  const gated = spec.include ? entries.filter((e) => spec.include!.test(e.title ?? '')) : entries;
+  const topN = gated.slice(0, ctx.config.thresholds.redditTopN);
 
   const items: RawItem[] = [];
   for (const entry of topN) {

@@ -1,4 +1,4 @@
-// prompt version: 5
+// prompt version: 6
 //
 // Bump the number above whenever the system prompt text below changes. ADR 0003
 // calls the prompt "the product": a version marker is what lets a run logged in
@@ -8,18 +8,19 @@
 // Everything in this file is pure. No network, no database, no clock — the system
 // prompt in particular must be byte-identical across runs or the cached prefix is
 // thrown away on every call, which is most of the cost of a small batch.
-import type { Item, Lane, Story } from '../db/types';
+import { laneGroup, type Item, type Lane, type Story } from '../db/types';
 
 /** Mirrors the `prompt version` comment above; logged with every run so a story can be traced to its wording. */
-export const PROMPT_VERSION = 5;
+export const PROMPT_VERSION = 6;
 
 /** ADR 0003: bodies are capped so a 60-item batch has a bounded input cost. */
 export const MAX_BODY_CHARS = 2000;
 
 const LANE_NOTES: Record<Lane, string> = {
   ai:
-    "AI news: frontier models, labs, research, policy, funding, infrastructure, and benchmarks and leaderboards (Arena, SWE-bench, ARC-AGI, Humanity's Last Exam, Epoch AI and similar). Score benchmark news by what it shows: a model taking #1 on a major leaderboard, the first results for a newly released frontier model, or a new benchmark that labs start reporting is 4 or 5; small rank shuffles among older models and self-reported numbers with no new model behind them are 2 or 3",
-  ai_dev: 'building with AI as a developer: agentic coding tools (Claude Code, Codex, Cursor), new workflows and techniques (prompt, context, loop and goal engineering), MCP and agent frameworks, releases and changelogs, and AI products that speed up game dev, 3D and animation work',
+    "AI news, meaning everything about AI that does not help the reader get better results from AI tools: labs and the industry, funding and acquisitions, policy and regulation, AI security incidents and vulnerabilities (including ones in coding tools), hardware and infrastructure, models with no coding use, general research, and benchmarks and leaderboards (Arena, SWE-bench, ARC-AGI, Humanity's Last Exam, Epoch AI and similar). Score benchmark news by what it shows: a model taking #1 on a major leaderboard, the first results for a newly released frontier model, or a new benchmark that labs start reporting is 4 or 5; small rank shuffles among older models and self-reported numbers with no new model behind them are 2 or 3",
+  ai_dev:
+    "making a developer or game developer better and faster with AI. It covers how to get better results from a model or coding agent: official prompting and best-practice guides, and workflow and technique write-ups on CLAUDE.md and AGENTS.md, skills, subagents, hooks, context management, planning, verification loops and parallel agents. It covers ways to cut tokens, cost or latency. It covers plugins, skills, MCP servers and tools that raise code quality or throughput. It covers models a developer could code with: releases, availability in Claude Code, Codex, Copilot or Cursor, price and limit changes, and hands-on coding comparisons. It covers technical research on how an LLM feature behaves when that changes how to use it, and AI tools for game dev, 3D and animation work. Score by how much the story would change how the reader works this week: an official prompting or best-practices guide for a current model, a coding-capable frontier model release, or a tool or technique with evidence that it cuts tokens or raises quality is 4 or 5; a solid practitioner technique or a useful new tool is 3 or 4; routine changelog versions, minor integrations, tool launches with no evidence, community anecdotes and opinion about the future of coding are 1 or 2",
   markets: 'crypto and macro markets, prices, regulation, exchanges',
   betting: 'sports betting, odds, bookmakers, betting models and datasets, MMA and UFC markets',
   gamedev:
@@ -86,7 +87,13 @@ HARD RULES
    same "itemIds".
 2. Use only item ids from the batch below and only story ids from the open-stories
    list below. Never invent an id.
-3. "lane" on a new story is the lane named in the batch header.
+3. "lane" on a new story is the lane named in the batch header, with one
+   exception: in an ai or ai_dev batch, choose ai or ai_dev by what the story is
+   about, not by where the item came from. A story that helps the reader get better
+   results from AI tools goes in ai_dev; everything else about AI goes in ai. A
+   security incident in a coding tool, an acquisition or a policy fight is ai even
+   when it arrived from a coding-tool feed. Items in these batches may also attach
+   to an open story in either lane.
 4. Every new story must have at least one item behind it.
 5. Every "newStory" object carries all five keys every time: lane, title,
    summaryShort, summaryDetail and score. "score" is the one most often left out
@@ -106,6 +113,10 @@ SUMMARIES
   it cites the source titles it drew from. No headings; short paragraphs and at most
   one short list. Before you emit a story, check its score against its detail: a
   score of 3 or higher with a null detail is the single most common mistake here.
+- In an ai_dev story, the detail ends with a line that starts "**Try this:**" and
+  names the one concrete thing to apply: the setting, prompt pattern, file, command,
+  plugin or model to use, and where. If you cannot name one, the story either
+  belongs in ai or deserves a lower score.
 
 SCORE RUBRIC
 5 = major: a frontier model release, an engine major version, a market-moving
@@ -130,7 +141,8 @@ DROPPING
 Put an item in "dropped" when it is advertising, a giveaway, a meme, engagement
 bait, a job post, a self-promotion thread, or has no substance worth a story. Being
 a duplicate is not a reason to drop: duplicates get attached to the story they
-duplicate.`;
+duplicate. Never create a placeholder story: an item you cannot summarise from its
+title and body is dropped.`;
 }
 
 /**
@@ -183,23 +195,33 @@ export function serialiseItems(items: Item[]): string {
     .join('\n\n');
 }
 
-/** Open stories carry only what clustering needs: id, score, age, title, one-liner. */
-export function serialiseStories(stories: Story[]): string {
+/**
+ * Open stories carry only what clustering needs: id, score, age, title, one-liner.
+ * `showLane` adds each story's lane, for a lane group whose stories span lanes.
+ */
+export function serialiseStories(stories: Story[], showLane = false): string {
   return stories
     .map((s) => {
-      const head = `#${s.id} | score ${s.score} | updated ${stamp(s.updatedAt)}`;
+      const head = `#${s.id}${showLane ? ` | ${s.lane}` : ''} | score ${s.score} | updated ${stamp(s.updatedAt)}`;
       return [head, `t: ${s.title}`, `s: ${s.summaryShort.replace(/\s+/g, ' ').trim()}`].join('\n');
     })
     .join('\n\n');
 }
 
 export function buildUserPrompt(lane: Lane, openStories: Story[], pendingItems: Item[]): string {
+  const group = laneGroup(lane);
+  const grouped = group.length > 1;
+  const where = grouped ? `IN LANES ${group.join(', ')}` : 'IN THIS LANE';
   const storiesBlock =
     openStories.length > 0
-      ? `OPEN STORIES IN THIS LANE (${openStories.length}, last 48h)\n${serialiseStories(openStories)}`
-      : 'OPEN STORIES IN THIS LANE: none';
+      ? `OPEN STORIES ${where} (${openStories.length}, last 48h)\n${serialiseStories(openStories, grouped)}`
+      : `OPEN STORIES ${where}: none`;
+  const laneLine = grouped
+    ? `Lane: ${lane}. New stories go in ${group.join(' or ')} by content (hard rule 3).\n` +
+      group.map((l) => `- ${l}: ${LANE_NOTES[l]}`).join('\n')
+    : `Lane: ${lane} — ${LANE_NOTES[lane]}`;
 
-  return `Lane: ${lane} — ${LANE_NOTES[lane]}
+  return `${laneLine}
 
 ${storiesBlock}
 

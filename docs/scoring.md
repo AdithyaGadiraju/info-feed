@@ -27,7 +27,17 @@ or 5, while patch builds, QOL editor tweaks and dev snapshots are 1 or 2. This i
 why engine blogs in `config/sources.ts` can be ingested unfiltered. `ai` does the
 same for benchmarks: a new #1 on a major leaderboard (Arena, SWE-bench, ARC-AGI),
 first results for a new frontier model, or a new benchmark labs adopt is 4 or 5,
-while small rank shuffles among older models are 2 or 3.
+while small rank shuffles among older models are 2 or 3. `ai_dev` scores by how much
+a story would change how you work this week: an official prompting or best-practices
+guide, a coding-capable frontier model, or a tool or technique with evidence that it
+cuts tokens or raises quality is 4 or 5, and routine changelogs, launches with no
+evidence, anecdotes and opinion are 1 or 2. Every `ai_dev` detail ends with a
+**Try this:** line.
+
+`ai` and `ai_dev` are enriched as one pool (`laneGroup` in `lib/db/types.ts`). The
+model files each new story under one of the two by content, not by source: anything
+that helps you get better results from AI tools is `ai_dev`, and the rest (security
+incidents, acquisitions, policy, hardware, research news) is `ai`.
 
 Items that are ads, memes, job posts or engagement bait are not scored at all. They
 go in `dropped`.

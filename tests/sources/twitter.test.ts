@@ -12,6 +12,7 @@ const baseConfig: SourcesConfig = {
   lanes: ['ai', 'markets', 'betting', 'gamedev', 'games'],
   laneOrder: ['ai', 'markets', 'betting', 'gamedev', 'games'],
   feeds: [],
+  docs: [],
   subreddits: [],
   hnQueries: [],
   hnFrontPageLaneKeywords: [],

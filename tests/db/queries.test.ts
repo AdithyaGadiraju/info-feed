@@ -125,6 +125,34 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
     expect(Number(dropped.story_id)).toBe(EXCLUDED_STORY_ID);
   });
 
+  it("files a new story in the model's lane within the run's lane group, and the run's lane outside it", async () => {
+    const res = await upsertItems([item('grp-dev'), item('grp-other')]);
+    const [dev, other] = res.inserted.map((r) => r.id);
+    const newStory = (lane: 'ai_dev' | 'betting', title: string) => ({
+      lane,
+      title,
+      summaryShort: 'Lane routing.',
+      summaryDetail: null,
+      score: 2 as const,
+    });
+
+    await applyAssignments('ai', {
+      assignments: [
+        { itemIds: [dev], newStory: newStory('ai_dev', '__test_queries__ group lane') },
+        { itemIds: [other], newStory: newStory('betting', '__test_queries__ foreign lane') },
+      ],
+      dropped: [],
+    });
+
+    const sql = db();
+    const rows = await sql`
+      SELECT title, lane FROM stories WHERE title IN ('__test_queries__ group lane', '__test_queries__ foreign lane')
+    `;
+    const laneOf = Object.fromEntries(rows.map((r) => [r.title, r.lane]));
+    expect(laneOf['__test_queries__ group lane']).toBe('ai_dev');
+    expect(laneOf['__test_queries__ foreign lane']).toBe('ai');
+  });
+
   it('links a story to the article behind it, not to the thread about it', async () => {
     // The HN thread is the earliest of the three, so it wins on recency alone —
     // it must still lose to a real article, and the article must beat the repost

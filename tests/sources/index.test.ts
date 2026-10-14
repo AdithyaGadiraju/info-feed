@@ -59,7 +59,7 @@ describe('ingest (live)', () => {
     const result = await ingest({ lanes: ['ai'], since, maxBodies: 3, job: TEST_JOB });
 
     expect(result.runId).toBeGreaterThan(0);
-    expect(result.sources.length).toBe(6);
+    expect(result.sources.length).toBe(7);
     expect(result.fetched).toBeGreaterThan(0);
     expect(result.stored).toBeGreaterThan(0);
 
@@ -235,5 +235,43 @@ describe('engagement pre-filter', () => {
       shouldExclude('twitter', fakeItem('t2', { engagement: { likes: 500 } }), thresholds),
     ).toBe(false);
     expect(shouldExclude('twitter', fakeItem('t3'), thresholds)).toBe(false);
+  });
+
+  it('lets a lane pass Hacker News stories at its own lower bar', () => {
+    const thresholds = { ...sourcesConfig.thresholds, hnMinPoints: 50, hnMinPointsByLane: { ai_dev: 15 } };
+    const at20 = { engagement: { points: 20 } };
+    expect(shouldExclude('hn', fakeItem('h1', { ...at20, laneHint: 'ai_dev' }), thresholds)).toBe(false);
+    expect(shouldExclude('hn', fakeItem('h2', { ...at20, laneHint: 'ai' }), thresholds)).toBe(true);
+    expect(
+      shouldExclude('hn', fakeItem('h3', { engagement: { points: 10 }, laneHint: 'ai_dev' }), thresholds),
+    ).toBe(true);
+  });
+});
+
+describe('snapshot sources', () => {
+  function snapshotSource(items: RawItem[]): Source {
+    return { name: 'docs', snapshot: true, fetch: async () => items };
+  }
+
+  it('seeds a new watch silently, then queues only pages it has not seen', async () => {
+    const since = new Date(Date.now() - 3600_000);
+    const page = (id: string) => fakeItem(id, { author: `watch-${RUN_ID}` });
+
+    // First listing: every page is stored, none reaches the model.
+    await ingest({ since, sources: [snapshotSource([page('d1'), page('d2')])], config: testConfig(), job: TEST_JOB });
+    expect(await storyIdOf('d1')).toBe(EXCLUDED_STORY_ID);
+    expect(await storyIdOf('d2')).toBe(EXCLUDED_STORY_ID);
+
+    // Second listing adds one page. Known pages are not rewritten, so the seeded
+    // rows keep their sentinel instead of flipping back to pending.
+    const second = await ingest({
+      since,
+      sources: [snapshotSource([page('d1'), page('d2'), page('d3')])],
+      config: testConfig(),
+      job: TEST_JOB,
+    });
+    expect(second.sources[0].inserted).toBe(1);
+    expect(await storyIdOf('d1')).toBe(EXCLUDED_STORY_ID);
+    expect(await storyIdOf('d3')).toBeNull();
   });
 });

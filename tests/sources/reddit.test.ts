@@ -25,6 +25,7 @@ const baseConfig: SourcesConfig = {
   lanes: ['ai', 'markets', 'betting', 'gamedev', 'games'],
   laneOrder: ['ai', 'markets', 'betting', 'gamedev', 'games'],
   feeds: [],
+  docs: [],
   subreddits: [],
   hnQueries: [],
   hnFrontPageLaneKeywords: [],
@@ -138,7 +139,8 @@ const ATOM_ENTRIES: RedditEntry[] = [
 
 describe('reddit entry mapping (fixture, no network)', () => {
   const spec = { lane: 'ai' as const, sub: 'MachineLearning' };
-  const ctx = ctxFor([spec]);
+  // Pinned before the fixture dates: a rolling "30 days ago" aged them out on 2026-10-13.
+  const ctx = { ...ctxFor([spec]), since: new Date('2026-09-01T00:00:00.000Z') };
 
   it('maps a self post, keeping the discussion permalink and the body text', () => {
     const [item] = mapEntries([ATOM_ENTRIES[0]], spec, ctx);
@@ -185,5 +187,17 @@ describe('reddit entry mapping (fixture, no network)', () => {
       isoDate: '2026-09-13T00:00:00.000Z',
     }));
     expect(mapEntries(many, spec, ctx)).toHaveLength(REDDIT_TOP_N);
+  });
+
+  it('applies a title gate before the rank cutoff', () => {
+    const many: RedditEntry[] = Array.from({ length: 25 }, (_, i) => ({
+      id: `t3_${i}`,
+      link: `https://www.reddit.com/r/ClaudeAI/comments/${i}/`,
+      title: i % 2 === 0 ? `My skill number ${i}` : `Meme ${i}`,
+      isoDate: '2026-09-13T00:00:00.000Z',
+    }));
+    const items = mapEntries(many, { ...spec, include: /skill/i }, ctx);
+    expect(items).toHaveLength(REDDIT_TOP_N);
+    expect(items.every((i) => i.title.includes('skill'))).toBe(true);
   });
 });

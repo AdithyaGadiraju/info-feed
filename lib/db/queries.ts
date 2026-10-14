@@ -11,6 +11,7 @@ import {
   EXCLUDED_STORY_ID,
   isNewStoryAssignment,
   isVerdict,
+  laneGroup,
   type EnrichResult,
   type FeedCursor,
   type FeedPage,
@@ -207,6 +208,28 @@ export async function getPendingItems(lane: Lane, limit = 60): Promise<Item[]> {
   return rows.map(toItem);
 }
 
+/**
+ * For a snapshot source (`Source.snapshot`): which of these external ids are
+ * already stored, and which authors have any row at all. An author with no rows
+ * is a watch on its first run, whose listing is stored as already seen.
+ */
+export async function getSnapshotState(
+  source: string,
+  externalIds: string[],
+): Promise<{ known: Set<string>; authors: Set<string> }> {
+  const sql = db();
+  const [known, authors] = await Promise.all([
+    externalIds.length === 0
+      ? Promise.resolve([] as Row[])
+      : sql`SELECT external_id FROM items WHERE source = ${source} AND external_id = ANY(${sql.array(externalIds)}::text[])`,
+    sql`SELECT DISTINCT author FROM items WHERE source = ${source} AND author IS NOT NULL`,
+  ]);
+  return {
+    known: new Set(known.map((r) => String(r.external_id))),
+    authors: new Set(authors.map((r) => String(r.author))),
+  };
+}
+
 export async function countPendingItems(lane?: Lane): Promise<number> {
   const sql = db();
   const rows = lane
@@ -239,17 +262,19 @@ export async function pruneOldBodies(days = 30): Promise<number> {
 // ---- stories ----
 
 /**
- * Context for the clustering call: stories still open in this lane, so an item
+ * Context for the clustering call: stories still open in these lanes, so an item
  * arriving at 11:00 can join a story created at 09:00 (ADR 0003). Highest score
- * first, because the cap is there to bound input tokens.
+ * first, because the cap is there to bound input tokens. Several lanes are passed
+ * for a lane group (`laneGroup`), whose items can join a story in any of them.
  */
-export async function getOpenStories(lane: Lane, hours = 48, max = 150): Promise<Story[]> {
+export async function getOpenStories(lanes: Lane | Lane[], hours = 48, max = 150): Promise<Story[]> {
   const sql = db();
+  const list = Array.isArray(lanes) ? lanes : [lanes];
   const rows = await sql`
     SELECT id::int AS id, lane, title, summary_short, summary_detail, score,
            first_seen_at, updated_at, digested_at
     FROM stories
-    WHERE lane = ${lane} AND updated_at > now() - ${`${hours} hours`}::interval
+    WHERE lane = ANY(${sql.array(list)}::text[]) AND updated_at > now() - ${`${hours} hours`}::interval
     ORDER BY score DESC, updated_at DESC
     LIMIT ${max}
   `;
@@ -272,6 +297,7 @@ export interface ApplyResult {
 export async function applyAssignments(lane: Lane, result: EnrichResult): Promise<ApplyResult> {
   const sql = db();
   const out: ApplyResult = { created: 0, updated: 0, attached: 0, dropped: 0 };
+  const group = laneGroup(lane);
 
   await sql.begin(async (tx) => {
     for (const a of result.assignments) {
@@ -279,14 +305,14 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
 
       if (isNewStoryAssignment(a)) {
         const s = a.newStory;
+        // The model picks newStory.lane only within the run's lane group; outside
+        // it the run's lane wins. A story stamped with an unrelated lane would
+        // never come back from getOpenStories for this run, so later items about
+        // the same event would spawn a duplicate story instead of joining it.
+        const storyLane = group.includes(s.lane) ? s.lane : lane;
         const [row] = await tx`
           INSERT INTO stories (lane, title, summary_short, summary_detail, score)
-          -- The run's lane wins over whatever the model put in newStory.lane.
-          -- A story stamped with another lane would render under that chip, post
-          -- to that lane's mirror webhook, and never come back from
-          -- getOpenStories for this lane, so later items about the same event
-          -- would spawn a duplicate story instead of joining it.
-          VALUES (${lane}, ${s.title}, ${s.summaryShort}, ${s.summaryDetail}, ${s.score})
+          VALUES (${storyLane}, ${s.title}, ${s.summaryShort}, ${s.summaryDetail}, ${s.score})
           RETURNING id::int AS id
         `;
         storyId = Number(row.id);

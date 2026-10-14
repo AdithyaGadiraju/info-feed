@@ -6,6 +6,9 @@
 import { LANES } from '../lib/db/types';
 import type { SourcesConfig } from '../lib/sources/types';
 
+/** Title gate for subreddits where agent technique is a small share of posts. */
+const AGENT_TECHNIQUE = /plugin|skill|hook|subagent|mcp|token|claude\.md|agents\.md|workflow|tips?\b|context|i built|cost/i;
+
 export const sourcesConfig: SourcesConfig = {
   lanes: LANES,
   // Digest posting order. ai first because it is the lane Gadi reads first.
@@ -14,44 +17,56 @@ export const sourcesConfig: SourcesConfig = {
   feeds: [
     // ai (AI News): labs, models, research, the industry.
     { lane: 'ai', name: 'OpenAI', url: 'https://openai.com/news/rss.xml' },
-    // Anthropic publishes no first-party RSS feed; every documented path 404s as of
-    // 2026-09-13. Anthropic news reaches the ai lane via Hacker News and r/LocalLLaMA
-    // instead. See the Deviations section of ADR 0002. (The engineering blog is in
-    // ai_dev via a community bridge, and the Claude Code changelog has a real feed.)
     { lane: 'ai', name: 'Google DeepMind', url: 'https://deepmind.google/blog/rss.xml' },
     { lane: 'ai', name: 'Hugging Face', url: 'https://huggingface.co/blog/feed.xml' },
     // -- benchmarks and leaderboards, verified live on 2026-09-19. Arena (lmarena)
     // publishes no feed and posts results on X, so r/singularity and HN carry them.
     { lane: 'ai', name: 'Epoch AI', url: 'https://epochai.substack.com/feed' },
     { lane: 'ai', name: 'Simon Willison (evals)', url: 'https://simonwillison.net/tags/evals.atom' },
-    // ai_dev (AI Dev): building with agentic tools. Three kinds of source, verified
-    // live on 2026-09-14: tool changelogs (what shipped), the people who coin and
-    // spread the techniques (context -> harness -> loop -> goal engineering all
-    // started on these blogs), and the gamedev/3D side where AI tooling lands.
-    // -- tool changelogs
+    // -- news-heavy feeds. Latent Space is mostly AINews, Lobsters' ai tag is ML
+    // research (coding-tool posts go under vibecoding), AI and Games is commentary.
+    { lane: 'ai', name: 'Latent Space', url: 'https://www.latent.space/feed' },
+    { lane: 'ai', name: 'Lobsters (ai)', url: 'https://lobste.rs/t/ai.rss' },
+    { lane: 'ai', name: 'AI and Games', url: 'https://www.aiandgames.com/feed' },
+    // ai_dev (AI Dev): getting better and faster at building with AI. ai and ai_dev
+    // are enriched as one pool (laneGroup in lib/db/types.ts), so the lane here is a
+    // hint: the model files each story by content. Picked for the share of posts
+    // that are technique, verified live on 2026-10-14. The docs watches below catch
+    // official guides, which no feed announces.
+    // -- first-party technique and tool changelogs
+    { lane: 'ai_dev', name: 'Claude Developer Blog', url: 'https://claude.dev/rss.xml' },
     { lane: 'ai_dev', name: 'Claude Code changelog', url: 'https://code.claude.com/docs/en/changelog/rss.xml' },
-    // Third-party RSSHub bridge; anthropic.com has no feed. Items carry no pubDate,
-    // so they surface with fetch time and dedupe on link. Drop it if the bridge dies.
-    { lane: 'ai_dev', name: 'Anthropic Engineering', url: 'https://rsshub.bestblogs.dev/anthropic/engineering' },
     { lane: 'ai_dev', name: 'Codex changelog', url: 'https://developers.openai.com/codex/changelog/rss.xml' },
     { lane: 'ai_dev', name: 'Cursor changelog', url: 'https://cursor.com/changelog/rss.xml' },
     { lane: 'ai_dev', name: 'GitHub Changelog (Copilot)', url: 'https://github.blog/changelog/label/copilot/feed/' },
-    // -- techniques and discourse
-    { lane: 'ai_dev', name: 'Simon Willison (AI-assisted programming)', url: 'https://simonwillison.net/tags/ai-assisted-programming.atom' },
-    { lane: 'ai_dev', name: 'Addy Osmani', url: 'https://addyosmani.com/rss.xml' },
+    { lane: 'ai_dev', name: 'GitHub Blog (AI & ML)', url: 'https://github.blog/ai-and-ml/feed/' },
+    // JetBrains tests agent tools and skills for token and quality claims.
+    { lane: 'ai_dev', name: 'JetBrains AI', url: 'https://blog.jetbrains.com/ai/feed/' },
+    // -- practitioners
+    { lane: 'ai_dev', name: 'Simon Willison (coding agents)', url: 'https://simonwillison.net/tags/coding-agents.atom' },
+    { lane: 'ai_dev', name: 'Addy Osmani', url: 'https://addyo.substack.com/feed' },
+    { lane: 'ai_dev', name: 'Matt Pocock (YouTube)', url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCswG6FSbgZjbWtdf_hMLaow' },
+    // About 70 of AI Hero's posts are one-line glossary stubs titled "... Dictionary".
+    { lane: 'ai_dev', name: 'AI Hero', url: 'https://www.aihero.dev/rss.xml', exclude: /dictionary/i },
+    { lane: 'ai_dev', name: 'Jesse Vincent', url: 'https://blog.fsck.com/feed/feed.xml' },
+    { lane: 'ai_dev', name: 'AI Coding Daily', url: 'https://aicodingdaily.substack.com/feed' },
+    { lane: 'ai_dev', name: 'Drew Breunig', url: 'https://www.dbreunig.com/feed.xml' },
+    { lane: 'ai_dev', name: 'Tessl', url: 'https://tessl.io/blog/feed' },
+    { lane: 'ai_dev', name: 'Builder.io', url: 'https://www.builder.io/blog/feed/xml' },
+    { lane: 'ai_dev', name: 'Every: Source Code', url: 'https://every.to/source-code/feed' },
     { lane: 'ai_dev', name: 'Geoffrey Huntley', url: 'https://ghuntley.com/rss/' },
     { lane: 'ai_dev', name: 'martinfowler.com', url: 'https://martinfowler.com/feed.atom' },
     { lane: 'ai_dev', name: 'Kent Beck', url: 'https://newsletter.kentbeck.com/feed' },
-    { lane: 'ai_dev', name: 'Latent Space', url: 'https://www.latent.space/feed' },
     { lane: 'ai_dev', name: 'The Pragmatic Engineer', url: 'https://newsletter.pragmaticengineer.com/feed' },
-    { lane: 'ai_dev', name: 'Every: Chain of Thought', url: 'https://every.to/chain-of-thought/feed' },
-    { lane: 'ai_dev', name: 'Lobsters (ai)', url: 'https://lobste.rs/t/ai.rss' },
-    // -- AI tooling for game dev, 3D and animation. The vendors themselves (Runway,
-    // Luma, Kling, Wonder Dynamics, Meshy, Move.ai, Cascadeur) publish no feeds, so
-    // the trade press and r/aigamedev carry that news.
-    { lane: 'ai_dev', name: 'CG Channel', url: 'https://www.cgchannel.com/feed/' },
-    { lane: 'ai_dev', name: 'AI and Games', url: 'https://www.aiandgames.com/feed' },
-    { lane: 'ai_dev', name: 'fxguide', url: 'https://www.fxguide.com/feed/' },
+    { lane: 'ai_dev', name: 'Lobsters (vibecoding)', url: 'https://lobste.rs/t/vibecoding.rss' },
+    { lane: 'ai_dev', name: 'dev.to (agenticcoding)', url: 'https://dev.to/feed/tag/agenticcoding' },
+    // -- AI agents in game dev. The 3D trade press (CG Channel, fxguide) was dropped
+    // on 2026-10-14: almost none of it was about AI. The Godot items suit a Godot 4
+    // C# workflow; both repos ship release notes worth reading.
+    { lane: 'ai_dev', name: 'GodotPrompter releases', url: 'https://github.com/jame581/GodotPrompter/releases.atom' },
+    { lane: 'ai_dev', name: 'Godot AI (MCP) releases', url: 'https://github.com/hi-godot/godot-ai/releases.atom' },
+    { lane: 'ai_dev', name: 'Ziva (Godot AI)', url: 'https://ziva.sh/feed.xml' },
+    { lane: 'ai_dev', name: 'Kyle Kukshtel', url: 'https://kylekukshtel.com/feed.rss' },
     // gamedev
     // -- engine first-party blogs, verified live on 2026-09-18. The prompt scores
     // patch and QOL releases as noise, so these can stay unfiltered. O3DE has no
@@ -86,16 +101,33 @@ export const sourcesConfig: SourcesConfig = {
     { lane: 'betting', name: 'Sports Handle', url: 'https://sportshandle.com/feed/' },
   ],
 
+  // New pages on docs sites, which publish no feed (lib/sources/docs.ts). A new
+  // page is the signal: this is how a guide like "Prompting Claude Opus 5.5" reaches
+  // the feed. The anthropic.com watch replaces an RSSHub bridge to the engineering
+  // blog. Verified live on 2026-10-14.
+  docs: [
+    { lane: 'ai_dev', name: 'Claude Platform docs', url: 'https://platform.claude.com/llms.txt', format: 'llms', prefixes: ['/docs/en/build-with-claude/', '/docs/en/about-claude/'] },
+    { lane: 'ai_dev', name: 'Claude Code docs', url: 'https://code.claude.com/docs/llms.txt', format: 'llms', prefixes: ['/docs/en/'] },
+    { lane: 'ai_dev', name: 'Anthropic Engineering', url: 'https://www.anthropic.com/sitemap.xml', format: 'sitemap', prefixes: ['/engineering/'] },
+    { lane: 'ai_dev', name: 'OpenAI developer docs', url: 'https://developers.openai.com/sitemap-0.xml', format: 'sitemap', prefixes: ['/blog/', '/cookbook/examples/', '/api/docs/guides/'] },
+    // Cursor's blog feed stopped in 2024; its sitemap still lists every post.
+    { lane: 'ai_dev', name: 'Cursor blog', url: 'https://cursor.com/sitemap.xml', format: 'sitemap', prefixes: ['/blog/'] },
+  ],
+
   subreddits: [
     { lane: 'ai', sub: 'MachineLearning' },
     { lane: 'ai', sub: 'LocalLLaMA' },
     { lane: 'ai', sub: 'artificial' },
     { lane: 'ai', sub: 'singularity' },
     { lane: 'ai_dev', sub: 'ClaudeCode' },
+    // Mostly news and complaints; the gate keeps tool and technique posts.
+    { lane: 'ai_dev', sub: 'ClaudeAI', include: AGENT_TECHNIQUE },
+    { lane: 'ai_dev', sub: 'PromptEngineering', include: AGENT_TECHNIQUE },
     { lane: 'ai_dev', sub: 'codex' },
     { lane: 'ai_dev', sub: 'cursor' },
     { lane: 'ai_dev', sub: 'ChatGPTCoding' },
-    { lane: 'ai_dev', sub: 'aigamedev' },
+    // r/aigamedev posts ~60 a day, mostly showcases; the gate keeps workflow posts.
+    { lane: 'ai_dev', sub: 'aigamedev', include: /claude|codex|cursor|mcp|agents?\.md|workflow|pipeline|godot|unity|unreal|blender|prompt|context|skill/i },
     { lane: 'gamedev', sub: 'gamedev' },
     { lane: 'gamedev', sub: 'godot' },
     { lane: 'gamedev', sub: 'gameenginedevs' },
@@ -113,7 +145,24 @@ export const sourcesConfig: SourcesConfig = {
 
   hnQueries: [
     { lane: 'ai', query: 'LLM OR "language model" OR Anthropic OR OpenAI' },
-    { lane: 'ai_dev', query: '"Claude Code" OR Codex OR Cursor OR Copilot OR "coding agent" OR "agentic coding" OR MCP' },
+    // Phrase queries for ai_dev: the old OR-of-terms query surfaced mostly 1-3
+    // point Show HNs. Each of these, at 15+ points, was on topic for 60 days.
+    { lane: 'ai_dev', query: 'Claude Code', allWords: true },
+    { lane: 'ai_dev', query: 'coding agents', allWords: true },
+    { lane: 'ai_dev', query: 'AGENTS.md', allWords: true },
+    { lane: 'ai_dev', query: 'godot claude', allWords: true },
+    { lane: 'ai_dev', query: 'godot mcp', allWords: true },
+    { lane: 'ai_dev', query: 'unreal mcp', allWords: true },
+    { lane: 'ai_dev', query: 'blender mcp', allWords: true },
+    // Show HN titles: where plugins and agent tools launch. Sampled 2026-10-14,
+    // about 85% of matches at 10+ points were dev-agent tools. 'mcp' is left out:
+    // it pulls in CAD tools and DAWs that merely expose an MCP server.
+    ...['coding agent', 'claude code', 'codex', 'plugin', 'skill', 'harness', 'tokens'].map((query) => ({
+      lane: 'ai_dev' as const,
+      query,
+      allWords: true,
+      showHn: true,
+    })),
     { lane: 'gamedev', query: 'Godot OR "game engine" OR Blender OR "Unreal Engine" OR Unity OR Bevy OR O3DE OR Defold' },
     { lane: 'games', query: 'video game release' },
     { lane: 'markets', query: 'bitcoin OR ethereum OR crypto market' },
@@ -150,6 +199,9 @@ export const sourcesConfig: SourcesConfig = {
     redditTopN: 10,
     redditMinUpvotes: 50,
     hnMinPoints: 50,
+    // Technique posts draw fewer points than news; 15 was the bar where the ai_dev
+    // queries stopped returning noise (sampled 2026-10-14).
+    hnMinPointsByLane: { ai_dev: 15 },
     twitterMinLikes: 100,
   },
 
