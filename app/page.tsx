@@ -1,4 +1,5 @@
 import Feed from '@/components/Feed';
+import Icon from '@/components/Icon';
 import { getFeedPage } from '@/lib/db/queries';
 import { isLane, type Lane } from '@/lib/db/types';
 
@@ -46,13 +47,22 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     // only place an internal exception could reach an HTTP response.
     console.error('[feed] could not load the first page:', err);
     return (
-      <main>
-        <h1 className="text-lg font-semibold tracking-tight text-body">info-feed</h1>
-        <p className="mt-6 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-muted">
-          Could not reach the database. If the Supabase project has been idle for a week it is
-          paused and needs resuming; the server log has the details.
-        </p>
-      </main>
+      <>
+        <div className="page-head">
+          <p className="eyebrow">Live feed</p>
+          <h1>Stories</h1>
+        </div>
+        <div className="callout callout-error" role="alert">
+          <Icon name="alert" size={18} />
+          <div>
+            <p className="callout-title">Could not reach the database</p>
+            <p>
+              If the Supabase project has been idle for a week it is paused and needs resuming. The
+              server log has the details.
+            </p>
+          </div>
+        </div>
+      </>
     );
   }
 }

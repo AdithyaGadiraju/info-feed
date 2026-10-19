@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Icon from '@/components/Icon';
 import StoryCard, { reviveStory, type WireStoryWithCount } from '@/components/StoryCard';
 import { ACTIVE_LANES, LANE_LABELS, type FeedCursor, type Lane, type StoryWithCount } from '@/lib/db/types';
 
@@ -149,80 +150,100 @@ export default function Feed({
     applyFilters(lanes.length === 1 && lanes[0] === lane ? [] : [lane], minScore);
   };
 
-  const chip = (active: boolean) =>
-    `rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-      active
-        ? 'border-accent bg-accent/15 text-accent'
-        : 'border-line bg-surface text-muted hover:text-body'
-    }`;
+  const laneNames = lanes.map((l) => LANE_LABELS[l]).join(', ');
+  // The filters are single-select, so a radio is only "on" when exactly that one lane is chosen.
+  const laneChecked = (lane: Lane) => lanes.length === 1 && lanes[0] === lane;
 
   return (
-    <main>
-      <header className="mb-4">
-        <h1 className="text-lg font-semibold tracking-tight text-body">info-feed</h1>
-      </header>
-
-      <div className="sticky top-0 z-10 -mx-4 mb-4 border-b border-line bg-ink/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className={chip(lanes.length === 0)} onClick={() => applyFilters([], minScore)}>
-            All
-          </button>
-          {ACTIVE_LANES.map((lane) => (
-            <button key={lane} type="button" className={chip(lanes.includes(lane))} onClick={() => toggleLane(lane)}>
-              {LANE_LABELS[lane]}
-            </button>
-          ))}
-        </div>
-        <div className="mt-2 flex items-center gap-2">
-          <span className="text-xs text-muted">min score</span>
-          <div className="flex gap-1">
-            {SCORES.map((s) => (
-              <button
-                key={s}
-                type="button"
-                aria-pressed={minScore === s}
-                className={`h-7 w-7 rounded-md border text-xs tabular-nums transition-colors ${
-                  minScore === s
-                    ? 'border-accent bg-accent/15 text-accent'
-                    : 'border-line bg-surface text-muted hover:text-body'
-                }`}
-                onClick={() => applyFilters(lanes, s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
+    <>
+      <div className="page-head">
+        <p className="eyebrow">Live feed</p>
+        <h1>Stories</h1>
+        <p className="lede">
+          Score {minScore}+ {lanes.length > 0 ? `in ${laneNames}` : 'across every lane'}, newest change first.
+        </p>
       </div>
 
-      <div className="space-y-3">
+      <section className="card stack mb-6" aria-label="Filters">
+        <fieldset className="chips">
+          <legend className="field-label">Lane</legend>
+          <label className="chip">
+            <input type="radio" name="lane" checked={lanes.length === 0} onChange={() => applyFilters([], minScore)} />
+            <span>All</span>
+          </label>
+          {ACTIVE_LANES.map((lane) => (
+            <label key={lane} className="chip">
+              <input type="radio" name="lane" checked={laneChecked(lane)} onChange={() => toggleLane(lane)} />
+              <span>{LANE_LABELS[lane]}</span>
+            </label>
+          ))}
+        </fieldset>
+        <fieldset className="chips">
+          <legend className="field-label">Minimum score</legend>
+          {SCORES.map((s) => (
+            <label key={s} className="chip">
+              <input type="radio" name="minScore" checked={minScore === s} onChange={() => applyFilters(lanes, s)} />
+              <span className="tnum">{s}+</span>
+            </label>
+          ))}
+        </fieldset>
+      </section>
+
+      <div className="stack" aria-busy={loading}>
         {stories.map((s) => (
           <StoryCard key={s.id} story={s} />
         ))}
       </div>
 
       {error ? (
-        <p className="mt-6 text-center text-sm text-lane-betting">
-          {error}{' '}
-          <button type="button" className="underline" onClick={() => void load({ reset: stories.length === 0 })}>
-            retry
-          </button>
-        </p>
+        <div className="callout callout-error mt-6" role="alert">
+          <Icon name="alert" size={18} />
+          <div className="flex flex-col gap-2">
+            <div>
+              <p className="callout-title">The feed did not load</p>
+              <p>{error}</p>
+            </div>
+            <div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => void load({ reset: stories.length === 0 })}
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {!loading && !error && stories.length === 0 ? (
-        <p className="mt-10 text-center text-sm text-muted">
-          Nothing at score {minScore}+{lanes.length > 0 ? ` in ${lanes.join(', ')}` : ''} yet.
+        <div className="card empty" role="status">
+          <span className="empty-icon">
+            <Icon name="inbox" size={24} />
+          </span>
+          <h2>Nothing at score {minScore}+ yet</h2>
+          <p className="muted">
+            {lanes.length > 0 ? `No ${laneNames} stories clear the bar right now.` : 'No stories clear the bar right now.'}
+          </p>
+          {lanes.length > 0 || minScore > 1 ? (
+            <button type="button" className="btn btn-secondary mt-2" onClick={() => applyFilters([], 1)}>
+              Show every story
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {loading ? (
+        <p className="subtle mt-6 text-center" role="status">
+          Loading stories…
         </p>
       ) : null}
 
-      {loading ? <p className="mt-6 text-center text-sm text-muted">Loading…</p> : null}
-
       {!loading && !error && done && stories.length > 0 ? (
-        <p className="mt-8 text-center text-xs text-muted">Nothing more.</p>
+        <p className="subtle small mt-8 text-center">That is everything at this score.</p>
       ) : null}
 
       <div ref={sentinel} aria-hidden className="h-px" />
-    </main>
+    </>
   );
 }

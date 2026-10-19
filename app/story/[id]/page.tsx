@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import Icon from '@/components/Icon';
 import StoryCard from '@/components/StoryCard';
 import { getStoryWithItems } from '@/lib/db/queries';
 
@@ -18,19 +19,21 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
   if (!story) notFound();
 
   return (
-    <main>
-      <Link href="/" className="text-xs text-muted underline underline-offset-2 hover:text-body">
-        ← feed
-      </Link>
-      <div className="mt-3">
-        {/* Pre-expanded with the detail already in hand, so the page is complete
-            HTML with JavaScript disabled. */}
-        <StoryCard
-          story={{ ...story, itemCount: story.items.length }}
-          initialDetail={story}
-          defaultExpanded
-        />
+    <>
+      <div className="mb-5">
+        <Link href="/" className="back-link">
+          <Icon name="back" />
+          All stories
+        </Link>
       </div>
-    </main>
+      {/* Pre-expanded with the detail already in hand, so the page is complete
+          HTML with JavaScript disabled. The story title is this page's h1. */}
+      <StoryCard
+        story={{ ...story, itemCount: story.items.length }}
+        initialDetail={story}
+        defaultExpanded
+        headingLevel={1}
+      />
+    </>
   );
 }

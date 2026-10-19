@@ -2,11 +2,11 @@
 
 import { useCallback, useId, useState } from 'react';
 import Markdown from 'react-markdown';
+import Icon, { type IconName } from '@/components/Icon';
 import {
   LANE_LABELS,
   VERDICT_LABELS,
   type Engagement,
-  type Lane,
   type StoryWithCount,
   type StoryWithItems,
   type Verdict,
@@ -59,16 +59,6 @@ export function reviveStoryWithItems(r: WireStoryWithItems): StoryWithItems {
   };
 }
 
-const LANE_CLASS: Record<Lane, string> = {
-  ai: 'text-lane-ai',
-  ai_dev: 'text-lane-ai_dev',
-  ai_gamedev: 'text-lane-ai_gamedev',
-  markets: 'text-lane-markets',
-  betting: 'text-lane-betting',
-  gamedev: 'text-lane-gamedev',
-  games: 'text-lane-games',
-};
-
 export function relativeTime(d: Date, now = Date.now()): string {
   const s = Math.round((now - d.getTime()) / 1000);
   if (s < 45) return 'just now';
@@ -101,20 +91,22 @@ function engagementLabel(e: Engagement): string | null {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
-function ScoreDots({ score }: { score: number }) {
+function ScorePips({ score }: { score: number }) {
   return (
-    <span className="tabular-nums text-muted" title={`score ${score}/5`} aria-label={`score ${score} of 5`}>
-      {'●'.repeat(score)}
-      <span className="text-line">{'●'.repeat(Math.max(0, 5 - score))}</span>
+    <span className="pips" role="img" title={`Score ${score} of 5`} aria-label={`Score ${score} of 5`}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <span key={n} className={n <= score ? 'on' : undefined} />
+      ))}
     </span>
   );
 }
 
-const VERDICT_CLASS: Record<Verdict, string> = {
-  confirmed: 'text-verdict-confirmed',
-  unconfirmed: 'text-verdict-unconfirmed',
-  disputed: 'text-verdict-disputed',
-  false: 'text-verdict-false',
+/** Every verdict is a colour, an icon and its word, so none relies on colour alone. */
+const VERDICT_STYLE: Record<Verdict, { tag: string; callout: string; icon: IconName }> = {
+  confirmed: { tag: 'tag-green', callout: 'callout-success', icon: 'check' },
+  unconfirmed: { tag: 'tag-amber', callout: 'callout-warn', icon: 'help' },
+  disputed: { tag: 'tag-red', callout: 'callout-error', icon: 'alert' },
+  false: { tag: 'tag-red', callout: 'callout-error', icon: 'x' },
 };
 
 /**
@@ -128,70 +120,77 @@ function isOutdated(story: { updatedAt: Date; verification: Verification | null 
 
 function VerdictBadge({ verification, outdated }: { verification: Verification; outdated: boolean }) {
   const label = VERDICT_LABELS[verification.verdict];
+  const style = VERDICT_STYLE[verification.verdict];
+  // An outdated verdict drops its colour and says so in words.
   return (
     <span
-      className={`font-semibold ${outdated ? 'text-muted' : VERDICT_CLASS[verification.verdict]}`}
-      title={outdated ? `${label} when checked, before the story last changed` : `fact-check: ${label}`}
+      className={`tag ${outdated ? '' : style.tag}`}
+      title={outdated ? `${label} when checked, before the story last changed` : `Fact-check: ${label}`}
     >
+      <Icon name={outdated ? 'clock' : style.icon} size={14} />
       {label}
-      {outdated ? ' (outdated)' : ''}
+      {outdated ? ', outdated' : ''}
     </span>
   );
 }
 
 function FactCheck({ verification, outdated }: { verification: Verification; outdated: boolean }) {
+  const style = VERDICT_STYLE[verification.verdict];
   return (
-    <div className="mb-3 border-b border-line pb-3">
-      <p className="text-xs text-muted">
-        <VerdictBadge verification={verification} outdated={outdated} /> · checked{' '}
-        <span suppressHydrationWarning>{relativeTime(verification.checkedAt)}</span>
-      </p>
-      <p className="mt-1 leading-relaxed text-body">{verification.note}</p>
-      {verification.sources.length > 0 ? (
-        <ul className="mt-1.5 space-y-0.5 text-xs">
-          {verification.sources.map((s) => (
-            <li key={s.url}>
-              <a
-                href={s.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted underline decoration-line underline-offset-2 hover:text-accent"
-              >
-                {s.title}
-              </a>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+    <div className={`callout ${outdated ? '' : style.callout} mb-5`}>
+      <Icon name={outdated ? 'clock' : style.icon} size={18} />
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <p className="callout-title">
+          Fact-check: {VERDICT_LABELS[verification.verdict]}
+          {outdated ? ', outdated' : ''}
+          <span className="subtle small font-normal">
+            {' '}
+            · checked <span suppressHydrationWarning>{relativeTime(verification.checkedAt)}</span>
+          </span>
+        </p>
+        <p>{verification.note}</p>
+        {verification.sources.length > 0 ? (
+          <ul className="small flex flex-col gap-0.5">
+            {verification.sources.map((s) => (
+              <li key={s.url}>
+                <a href={s.url} target="_blank" rel="noopener noreferrer">
+                  {s.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
     </div>
   );
 }
 
 function SourceList({ items }: { items: StoryWithItems['items'] }) {
-  if (items.length === 0) return <p className="text-sm text-muted">No sources recorded.</p>;
+  if (items.length === 0) return <p className="muted">No sources recorded.</p>;
   return (
-    <ul className="space-y-3">
-      {items.map((i) => {
-        const eng = engagementLabel(i.engagement);
-        return (
-          <li key={i.id} className="border-l-2 border-line pl-3">
-            <a
-              href={i.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm font-medium text-body underline decoration-line underline-offset-2 hover:text-accent"
-            >
-              {i.title}
-            </a>
-            <p className="mt-0.5 text-xs text-muted">
-              <span className="uppercase tracking-wide">{i.source}</span>
-              {i.author ? <> · {i.author}</> : null}
-              {eng ? <> · {eng}</> : null} · <span suppressHydrationWarning>{relativeTime(i.publishedAt)}</span>
-            </p>
-          </li>
-        );
-      })}
-    </ul>
+    <div>
+      <div className="section-head">
+        <h3 className="eyebrow">Sources</h3>
+        <span className="count">{items.length}</span>
+      </div>
+      <ul className="flex flex-col gap-4">
+        {items.map((i) => {
+          const eng = engagementLabel(i.engagement);
+          return (
+            <li key={i.id} className="flex flex-col gap-1">
+              <a href={i.url} target="_blank" rel="noopener noreferrer" className="font-semibold">
+                {i.title}
+              </a>
+              <p className="subtle small">
+                <span className="eyebrow">{i.source}</span>
+                {i.author ? <> · {i.author}</> : null}
+                {eng ? <> · {eng}</> : null} · <span suppressHydrationWarning>{relativeTime(i.publishedAt)}</span>
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -203,6 +202,8 @@ export interface StoryCardProps {
    */
   initialDetail?: StoryWithItems | null;
   defaultExpanded?: boolean;
+  /** The permalink page makes the story title its h1; in the feed each title is an h2. */
+  headingLevel?: 1 | 2;
 }
 
 /**
@@ -212,7 +213,12 @@ export interface StoryCardProps {
  * `/api/feed?storyId=N` on first expand and caches it for the life of the card.
  * The permalink page skips that round trip entirely via `initialDetail`.
  */
-export default function StoryCard({ story, initialDetail = null, defaultExpanded = false }: StoryCardProps) {
+export default function StoryCard({
+  story,
+  initialDetail = null,
+  defaultExpanded = false,
+  headingLevel = 2,
+}: StoryCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [detail, setDetail] = useState<StoryWithItems | null>(initialDetail);
   const [loading, setLoading] = useState(false);
@@ -245,52 +251,58 @@ export default function StoryCard({ story, initialDetail = null, defaultExpanded
   // story needs no second line; a disputed one should not need a click.
   const warn = verification !== null && !outdated && (verification.verdict === 'disputed' || verification.verdict === 'false');
 
+  const Heading = headingLevel === 1 ? 'h1' : 'h2';
+
   return (
-    <article className="overflow-hidden rounded-xl border border-line bg-surface">
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={expanded}
-        aria-controls={panelId}
-        className="block w-full cursor-pointer px-4 py-3.5 text-left transition-colors hover:bg-surface-2"
-      >
-        <div className="flex items-center gap-2 text-xs">
-          <span className={`font-semibold uppercase tracking-wider ${LANE_CLASS[story.lane]}`}>{LANE_LABELS[story.lane]}</span>
-          <ScoreDots score={story.score} />
+    <article className="panel overflow-hidden">
+      {/* The title is the toggle button; its ::after stretches over the whole head,
+          so the summary is clickable too while the heading stays a real heading. */}
+      <div className="story-head">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="eyebrow">{LANE_LABELS[story.lane]}</span>
+          <ScorePips score={story.score} />
           {verification ? <VerdictBadge verification={verification} outdated={outdated} /> : null}
-          <span className="ml-auto text-muted" suppressHydrationWarning>
+          <span className="subtle small ml-auto" suppressHydrationWarning>
             {relativeTime(story.updatedAt)}
           </span>
         </div>
-        <h2 className="mt-1.5 text-[15px] font-semibold leading-snug text-body">{story.title}</h2>
-        <p className="mt-1 text-sm leading-relaxed text-muted">{story.summaryShort}</p>
+        <Heading className={`story-title ${headingLevel === 1 ? 'story-title-lg' : ''} mt-3`}>
+          <button type="button" onClick={toggle} aria-expanded={expanded} aria-controls={panelId}>
+            {story.title}
+          </button>
+        </Heading>
+        <p className="muted mt-2">{story.summaryShort}</p>
         {warn ? (
-          <p className={`mt-1 text-sm leading-relaxed ${VERDICT_CLASS[verification.verdict]}`}>{verification.note}</p>
+          <p className="mt-2 flex gap-2 font-semibold text-red-ink">
+            <span className="mt-0.5 shrink-0">
+              <Icon name={VERDICT_STYLE[verification.verdict].icon} />
+            </span>
+            {verification.note}
+          </p>
         ) : null}
-        <p className="mt-2 text-xs text-muted">
+        <p className="subtle small mt-3 flex items-center gap-1.5">
           {sourceCount} {sourceCount === 1 ? 'source' : 'sources'}
-          <span className="ml-2 text-line">{expanded ? '▲' : '▼'}</span>
+          <span className={`story-chevron ${expanded ? 'is-open' : ''}`}>
+            <Icon name="chevron" size={14} />
+          </span>
         </p>
-      </button>
+      </div>
 
       {story.primaryUrl ? (
-        <a
-          href={story.primaryUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 border-t border-line px-4 py-2 text-xs text-muted transition-colors hover:text-accent"
-        >
-          <span className="font-medium">Read the original</span>
-          <span className="truncate text-line">{hostOf(story.primaryUrl) ?? story.primaryUrl}</span>
-          <span className="ml-auto">↗</span>
+        <a href={story.primaryUrl} target="_blank" rel="noopener noreferrer" className="story-foot">
+          <span>Read the original</span>
+          <span className="subtle truncate font-normal">{hostOf(story.primaryUrl) ?? story.primaryUrl}</span>
+          <span className="ml-auto shrink-0">
+            <Icon name="external" size={14} />
+          </span>
         </a>
       ) : null}
 
       {expanded ? (
-        <div id={panelId} className="border-t border-line bg-surface-2/40 px-4 py-3.5 text-sm">
+        <div id={panelId} className="story-detail">
           {verification ? <FactCheck verification={verification} outdated={outdated} /> : null}
           {story.summaryDetail ? (
-            <div className="md text-body">
+            <div className="md">
               <Markdown
                 components={{
                   a: ({ href, children }) => (
@@ -304,13 +316,21 @@ export default function StoryCard({ story, initialDetail = null, defaultExpanded
               </Markdown>
             </div>
           ) : loading ? (
-            <p className="text-muted">Loading sources…</p>
+            <p className="subtle" role="status">
+              Loading sources…
+            </p>
           ) : error ? (
-            <p className="text-lane-betting">{error}</p>
+            <div className="callout callout-error" role="alert">
+              <Icon name="alert" size={18} />
+              <div>
+                <p className="callout-title">Sources did not load</p>
+                <p>{error}</p>
+              </div>
+            </div>
           ) : detail ? (
             <SourceList items={detail.items} />
           ) : (
-            <p className="text-muted">No detail yet.</p>
+            <p className="muted">No detail yet.</p>
           )}
         </div>
       ) : null}

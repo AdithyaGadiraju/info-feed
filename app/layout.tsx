@@ -1,5 +1,10 @@
 import type { Metadata, Viewport } from 'next';
+import { Figtree } from 'next/font/google';
+import AppHeader from '@/components/AppHeader';
 import './globals.css';
+
+// next/font self-hosts Figtree and sets --font-brand, which boxy.css reads.
+const brand = Figtree({ subsets: ['latin'], variable: '--font-brand', display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'info-feed',
@@ -9,14 +14,25 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#0a0c0f',
+  themeColor: '#ffffff',
+  // Lets fixed bottom bars pad for the iPhone home indicator.
+  viewportFit: 'cover',
 };
+
+// Applies the saved theme before first paint, so a dark reader never sees a light flash.
+const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}})()`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-dvh antialiased">
-        <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-5 sm:px-6">{children}</div>
+    // Knobs per docs/ui-design.md. The head script may change data-theme before
+    // hydration, hence suppressHydrationWarning.
+    <html lang="en" className={brand.variable} data-tone="bold" data-theme="light" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
+      <body>
+        <AppHeader />
+        <main>{children}</main>
       </body>
     </html>
   );

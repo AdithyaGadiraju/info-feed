@@ -1,0 +1,45 @@
+/* Style-guide scaffolding only. Tokens from app/boxy.css; nothing here is needed by the app. */
+.section { display: flex; flex-direction: column; gap: var(--gap); margin-top: 56px; scroll-margin-top: 80px; }
+.section > :global(.section-head) { margin-bottom: 0; }
+.intro { color: var(--text-2); max-width: 62ch; margin-top: -4px; }
+.label { margin-bottom: 10px; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 16px 24px; padding: 16px var(--panel-pad-x); }
+@media (min-width: 40em) { .controls { padding: 18px 20px; } }
+.knob { display: flex; flex-direction: column; gap: 8px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.knob > legend { padding: 0; margin-bottom: 8px; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border-strong); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+.seg button { font: inherit; font-size: 0.875rem; font-weight: 600; min-height: 40px; padding: 0 12px; border: 0; border-left: 1px solid var(--border); background: transparent; color: var(--text-2); cursor: pointer; }
+.seg button:first-child { border-left: 0; }
+.seg button:hover { background: var(--surface-2); color: var(--text); }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--surface); }
+.seg button:focus-visible { position: relative; z-index: 1; }
+
+.swatches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+@media (min-width: 40em) { .swatches { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.swatch { display: flex; flex-direction: column; gap: 4px; padding: 12px; background: var(--surface); }
+.chip { height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--border); margin-bottom: 6px; }
+.chipFocus { background: var(--surface); box-shadow: var(--focus-ring); }
+.chipAccentSoft { border-color: var(--accent-soft-border); }
+
+.type { display: flex; flex-direction: column; gap: 14px; }
+.type > div { display: grid; gap: 4px; }
+@media (min-width: 40em) { .type > div { grid-template-columns: 9rem minmax(0, 1fr); align-items: baseline; gap: 16px; } }
+.display { font-size: 2.25rem; line-height: 1.15; font-weight: var(--heading-weight); letter-spacing: var(--display-tracking); }
+.heading { font-size: 1.125rem; font-weight: var(--heading-weight); letter-spacing: var(--heading-tracking); }
+.sub { font-weight: 650; }
+.numbers { font-size: 1.75rem; font-weight: var(--heading-weight); }
+
+/* One column: the app's reading column (46rem) is too narrow for a form beside a sticky aside. */
+.flow { display: grid; gap: 24px; align-items: start; }
+.rowGap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cards { display: grid; gap: var(--gap); }
+@media (min-width: 40em) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.storyTop { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.storyTitle { font-size: 1.25rem; font-weight: var(--heading-weight); }
+.tight { gap: 4px; }
+.chipCount { margin-left: 8px; }
+.disclosureBody { padding-bottom: 12px; }
+.emptyAction { margin-top: 8px; }
+.emptyDone { background: var(--highlight); color: var(--on-highlight); }
+.footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border-strong); }

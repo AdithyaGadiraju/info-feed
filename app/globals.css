@@ -1,66 +1,173 @@
 @import "tailwindcss";
+/* House UI foundation (docs/ui-design.md). In the components layer: after
+   preflight so its base rules win, before utilities so layout utilities still win. */
+@import "./boxy.css" layer(components);
 
-/* Tailwind v4: no tailwind.config.js, the theme lives here (ADR 0004: reading
-   surface, dark by default, mobile first). */
-@theme {
-  --color-ink: #0a0c0f;
-  --color-surface: #13171d;
-  --color-surface-2: #1a1f27;
-  --color-line: #252c36;
-  --color-body: #e5e9f0;
-  --color-muted: #8b95a7;
-  --color-accent: #7aa2f7;
+/* dark: variant follows the boxy theme knob, not the OS. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-  --color-lane-ai: #a78bfa;
-  --color-lane-ai_dev: #c4b5fd;
-  --color-lane-ai_gamedev: #f0abfc;
-  --color-lane-markets: #34d399;
-  --color-lane-betting: #fbbf24;
-  --color-lane-gamedev: #f472b6;
-  --color-lane-games: #38bdf8;
-
-  /* Fact-check verdicts (lib/verify). */
-  --color-verdict-confirmed: #34d399;
-  --color-verdict-unconfirmed: #fbbf24;
-  --color-verdict-disputed: #fb923c;
-  --color-verdict-false: #f87171;
+/* Tailwind utilities read the boxy tokens directly: bg-surface, text-text-2, border-border. */
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-border: var(--accent-soft-border);
+  --color-accent-ink: var(--accent-ink);
+  --color-on-accent: var(--on-accent);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-highlight: var(--highlight);
+  --color-amber-ink: var(--amber-ink);
+  --color-red-ink: var(--red-ink);
+  --color-green-ink: var(--green-ink);
+  --radius-box: var(--radius);
+  --spacing-gap: var(--gap);
 }
 
-html {
-  /* Makes scrollbars and form controls render dark without a theme toggle. */
-  color-scheme: dark;
-}
+@layer components {
+  /* A feed is read, not scanned across: one comfortable column for header and page alike. */
+  .app-header-inner,
+  main {
+    max-width: 46rem;
+  }
 
-body {
-  background-color: var(--color-ink);
-  color: var(--color-body);
-  -webkit-text-size-adjust: 100%;
-}
+  .header-tools {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
 
-/* react-markdown emits bare tags; give them reading-surface defaults once here
-   rather than threading class names through the renderer. */
-.md > * + * { margin-top: 0.75rem; }
-.md p { line-height: 1.65; }
-.md a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
-.md ul { list-style: disc; padding-left: 1.25rem; }
-.md ol { list-style: decimal; padding-left: 1.25rem; }
-.md li + li { margin-top: 0.25rem; }
-.md h1, .md h2, .md h3 { font-weight: 600; font-size: 1rem; }
-.md code {
-  background-color: var(--color-surface-2);
-  border-radius: 0.25rem;
-  padding: 0.1rem 0.3rem;
-  font-size: 0.85em;
-}
-.md pre {
-  background-color: var(--color-surface-2);
-  border-radius: 0.5rem;
-  padding: 0.75rem;
-  overflow-x: auto;
-}
-.md pre code { background: none; padding: 0; }
-.md blockquote {
-  border-left: 2px solid var(--color-line);
-  padding-left: 0.75rem;
-  color: var(--color-muted);
+  /* Score: five square pips, filled in accent up to the score. The number is in the aria-label. */
+  .pips {
+    display: inline-flex;
+    gap: 2px;
+  }
+  .pips > span {
+    width: 7px;
+    height: 7px;
+    border-radius: 1px;
+    background: var(--border-strong);
+  }
+  .pips > span.on {
+    background: var(--accent);
+  }
+
+  /* Story card: a clickable head, a "read the original" row, an optional detail panel. */
+  .story-head {
+    position: relative;
+    padding: var(--panel-pad-y) var(--panel-pad-x);
+    transition: background-color 0.15s;
+  }
+  .story-head:hover {
+    background: var(--surface-2);
+  }
+  .story-title {
+    font-size: 1.1875rem;
+    line-height: 1.3;
+    font-weight: var(--heading-weight);
+    letter-spacing: var(--heading-tracking);
+  }
+  .story-title-lg {
+    font-size: 1.5rem;
+    line-height: 1.2;
+    letter-spacing: var(--display-tracking);
+  }
+  /* The button is only the title, but its ::after covers the whole head. */
+  .story-title > button {
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    text-align: left;
+    padding: 0;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .story-title > button::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  .story-title > button:focus-visible {
+    box-shadow: none;
+  }
+  .story-title > button:focus-visible::after {
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+  .story-chevron {
+    display: inline-flex;
+    transition: transform 0.15s;
+  }
+  .story-chevron.is-open {
+    transform: rotate(180deg);
+  }
+  .story-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--tap);
+    padding: 0 var(--panel-pad-x);
+    border-top: 1px solid var(--border);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--accent-ink);
+    text-decoration: none;
+  }
+  .story-foot:hover {
+    background: var(--surface-2);
+  }
+  .story-detail {
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+    padding: var(--panel-pad-y) var(--panel-pad-x);
+  }
+  @media (min-width: 40em) {
+    .story-head,
+    .story-detail {
+      padding: var(--panel-pad-y-lg) var(--panel-pad-x-lg);
+    }
+    .story-foot {
+      padding: 0 var(--panel-pad-x-lg);
+    }
+    .story-title-lg {
+      font-size: 1.875rem;
+    }
+  }
+
+  /* react-markdown emits bare tags; give them reading-surface defaults once here
+     rather than threading class names through the renderer. */
+  .md > * + * { margin-top: 0.75rem; }
+  .md p { line-height: 1.65; }
+  .md ul { list-style: disc; padding-left: 1.25rem; }
+  .md ol { list-style: decimal; padding-left: 1.25rem; }
+  .md li + li { margin-top: 0.25rem; }
+  .md h1, .md h2, .md h3 { font-size: 1rem; }
+  .md code {
+    font-family: var(--font-mono);
+    background: var(--surface-3);
+    border-radius: var(--radius-sm);
+    padding: 0.1rem 0.3rem;
+    font-size: 0.85em;
+  }
+  .md pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
+    overflow-x: auto;
+  }
+  .md pre code { background: none; padding: 0; }
+  .md blockquote {
+    border-left: 3px solid var(--border-strong);
+    padding-left: 0.75rem;
+    color: var(--text-2);
+  }
 }
