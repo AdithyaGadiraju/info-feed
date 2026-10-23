@@ -102,3 +102,9 @@ ALTER TABLE stories ADD COLUMN IF NOT EXISTS verdict         text;
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS verdict_note    text;
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS verdict_sources jsonb;
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS verified_at     timestamptz;
+
+-- One-line definitions of the jargon in a story's summaries (lib/enrich), a JSON
+-- array of {term, definition}. NULL means never generated: stories from before the
+-- column existed, which scripts/glossary-backfill.ts fills in. [] means generated
+-- and the story has no jargon worth defining.
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS glossary jsonb;

@@ -54,6 +54,7 @@ function story(overrides: Partial<StoryWithLink> = {}): StoryWithLink {
     lane: 'ai',
     title: 'Anthropic ships a new thing',
     summaryShort: 'A short summary of the thing.',
+    glossary: [],
     summaryDetail: null,
     score: 4,
     firstSeenAt: new Date('2026-09-13T00:00:00Z'),

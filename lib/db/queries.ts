@@ -15,6 +15,7 @@ import {
   type EnrichResult,
   type FeedCursor,
   type FeedPage,
+  type GlossaryTerm,
   type Item,
   type Lane,
   type NewItem,
@@ -59,6 +60,7 @@ function toStory(r: Row): Story {
     summaryShort: r.summary_short as string,
     summaryDetail: (r.summary_detail as string | null) ?? null,
     score: Number(r.score) as Score,
+    glossary: Array.isArray(r.glossary) ? (r.glossary as GlossaryTerm[]) : [],
     firstSeenAt: r.first_seen_at as Date,
     updatedAt: r.updated_at as Date,
     digestedAt: (r.digested_at as Date | null) ?? null,
@@ -327,8 +329,9 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
         // the same event would spawn a duplicate story instead of joining it.
         const storyLane = group.includes(s.lane) ? s.lane : lane;
         const [row] = await tx`
-          INSERT INTO stories (lane, title, summary_short, summary_detail, score)
-          VALUES (${storyLane}, ${s.title}, ${s.summaryShort}, ${s.summaryDetail}, ${s.score})
+          INSERT INTO stories (lane, title, summary_short, summary_detail, score, glossary)
+          VALUES (${storyLane}, ${s.title}, ${s.summaryShort}, ${s.summaryDetail}, ${s.score},
+                  ${tx.json(s.glossary as never)})
           RETURNING id::int AS id
         `;
         storyId = Number(row.id);
@@ -339,6 +342,7 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
         if (a.updatedShort !== undefined) sets.push('short');
         if (a.updatedDetail !== undefined) sets.push('detail');
         if (a.updatedScore !== undefined) sets.push('score');
+        if (a.updatedGlossary !== undefined) sets.push('glossary');
 
         if (sets.length > 0) {
           const res = await tx`
@@ -347,6 +351,8 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
               summary_detail = CASE WHEN ${a.updatedDetail !== undefined}
                                     THEN ${a.updatedDetail ?? null} ELSE summary_detail END,
               score          = COALESCE(${a.updatedScore ?? null}, score),
+              glossary       = CASE WHEN ${a.updatedGlossary !== undefined}
+                                    THEN ${tx.json((a.updatedGlossary ?? []) as never)} ELSE glossary END,
               updated_at     = date_trunc('milliseconds', now())
             WHERE id = ${storyId}
           `;
@@ -390,7 +396,7 @@ export async function getDigestStories(
 ): Promise<StoryWithLink[]> {
   const sql = db();
   const rows = await sql`
-    SELECT id::int AS id, lane, title, summary_short, summary_detail, score,
+    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary,
            first_seen_at, updated_at, digested_at,
            verdict, verdict_note, verdict_sources, verified_at,
            (SELECT i.url FROM items i WHERE i.story_id = stories.id
@@ -512,7 +518,7 @@ export async function getFeedPage(opts: {
   const cursor = opts.cursor ?? null;
 
   const rows = await sql`
-    SELECT s.id::int AS id, s.lane, s.title, s.summary_short, s.summary_detail, s.score,
+    SELECT s.id::int AS id, s.lane, s.title, s.summary_short, s.summary_detail, s.score, s.glossary,
            s.first_seen_at, s.updated_at, s.digested_at,
            s.verdict, s.verdict_note, s.verdict_sources, s.verified_at,
            cnt.item_count, cnt.primary_url
@@ -549,11 +555,45 @@ export async function getFeedPage(opts: {
   return { stories, nextCursor };
 }
 
+// ---- glossary backfill ----
+
+/**
+ * Stories whose glossary was never generated (NULL, as opposed to an empty array),
+ * newest first. Only scripts/glossary-backfill.ts reads this: enrichment writes a
+ * glossary on every story it creates.
+ */
+export async function getStoriesWithoutGlossary(minScore: number, limit: number): Promise<Story[]> {
+  const sql = db();
+  const rows = await sql`
+    SELECT id::int AS id, lane, title, summary_short, summary_detail, score,
+           first_seen_at, updated_at, digested_at
+    FROM stories
+    WHERE glossary IS NULL AND score >= ${minScore}
+    ORDER BY updated_at DESC, id DESC
+    LIMIT ${limit}
+  `;
+  return rows.map(toStory);
+}
+
+/** Writes backfilled glossaries. Leaves `updated_at` alone: new definitions are not news. */
+export async function setGlossaries(entries: Array<{ id: number; glossary: GlossaryTerm[] }>): Promise<number> {
+  if (entries.length === 0) return 0;
+  const sql = db();
+  let written = 0;
+  await sql.begin(async (tx) => {
+    for (const e of entries) {
+      const res = await tx`UPDATE stories SET glossary = ${tx.json(e.glossary as never)} WHERE id = ${e.id}`;
+      written += res.count;
+    }
+  });
+  return written;
+}
+
 /** The expanded card and the `/story/[id]` permalink. */
 export async function getStoryWithItems(id: number): Promise<StoryWithItems | null> {
   const sql = db();
   const [row] = await sql`
-    SELECT id::int AS id, lane, title, summary_short, summary_detail, score,
+    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary,
            first_seen_at, updated_at, digested_at,
            verdict, verdict_note, verdict_sources, verified_at,
            (SELECT i.url FROM items i WHERE i.story_id = stories.id

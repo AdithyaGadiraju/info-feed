@@ -68,6 +68,11 @@ npm run digest -- --since 24
 `npm run digest` runs the migration itself at startup, so `db:migrate` is only needed
 when you want to apply the schema without running a digest.
 
+Each story carries a glossary: one-line definitions of the jargon in its summaries,
+shown as a "Terms" section on the card. Enrichment writes it for new stories; stories
+from before it existed get theirs from `npm run glossary:backfill -- --max 50`
+(re-runnable, newest first, `--min-score` defaults to the feed's 3).
+
 ### The database
 
 One Supabase project on the Free plan, used as plain Postgres. No Supabase SDK, no RLS,

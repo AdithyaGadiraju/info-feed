@@ -103,6 +103,7 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
             summaryShort: 'Two items became one story.',
             summaryDetail: null,
             score: 4,
+            glossary: [],
           },
         },
       ],
@@ -134,6 +135,7 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
       summaryShort: 'Lane routing.',
       summaryDetail: null,
       score: 2 as const,
+      glossary: [],
     });
 
     await applyAssignments('ai', {
@@ -167,6 +169,7 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
             summaryShort: 'One item.',
             summaryDetail: null,
             score: 2,
+            glossary: [],
           },
         },
       ],
@@ -224,6 +227,7 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
             summaryShort: 'One story, three items, one article.',
             summaryDetail: null,
             score: 5,
+            glossary: [],
           },
         },
       ],

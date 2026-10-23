@@ -128,6 +128,12 @@ export interface Verification {
   checkedAt: Date;
 }
 
+/** One jargon term from a story's summaries, defined in a single line. */
+export interface GlossaryTerm {
+  term: string;
+  definition: string;
+}
+
 export interface Story {
   id: number;
   lane: Lane;
@@ -135,6 +141,8 @@ export interface Story {
   summaryShort: string;
   summaryDetail: string | null;
   score: Score;
+  /** Jargon from the summaries, in the order it first appears. Empty when there is none. */
+  glossary: GlossaryTerm[];
   firstSeenAt: Date;
   updatedAt: Date;
   digestedAt: Date | null;
@@ -213,6 +221,7 @@ export interface NewStoryInput {
   summaryShort: string;
   summaryDetail: string | null;
   score: Score;
+  glossary: GlossaryTerm[];
 }
 
 export type Assignment =
@@ -222,6 +231,8 @@ export type Assignment =
       updatedShort?: string;
       updatedDetail?: string | null;
       updatedScore?: Score;
+      /** Replaces the whole glossary; sent alongside a summary rewrite. */
+      updatedGlossary?: GlossaryTerm[];
     }
   | { itemIds: number[]; newStory: NewStoryInput };
 

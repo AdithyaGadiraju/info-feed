@@ -7,6 +7,7 @@ import {
   LANE_LABELS,
   VERDICT_LABELS,
   type Engagement,
+  type GlossaryTerm,
   type StoryWithCount,
   type StoryWithItems,
   type Verdict,
@@ -194,6 +195,42 @@ function SourceList({ items }: { items: StoryWithItems['items'] }) {
   );
 }
 
+/**
+ * Jargon from the summaries, closed by default. Native <details> all the way down,
+ * so it works without JavaScript on the permalink page and several terms can be
+ * open at once. It sits above the title button's overlay (see .glossary), so
+ * opening it never toggles the card.
+ */
+function Glossary({ terms }: { terms: GlossaryTerm[] }) {
+  if (terms.length === 0) return null;
+  return (
+    <details className="glossary mt-3">
+      <summary>
+        <span className="glossary-chevron">
+          <Icon name="chevron" size={14} />
+        </span>
+        <span className="eyebrow">Terms</span>
+        <span className="count">{terms.length}</span>
+      </summary>
+      <ul className="glossary-list">
+        {terms.map((t, i) => (
+          <li key={`${i}-${t.term}`}>
+            <details className="glossary-term">
+              <summary>
+                <span className="glossary-chevron">
+                  <Icon name="chevron" size={14} />
+                </span>
+                {t.term}
+              </summary>
+              <p className="muted small">{t.definition}</p>
+            </details>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 export interface StoryCardProps {
   story: StoryWithCount;
   /**
@@ -272,6 +309,7 @@ export default function StoryCard({
           </button>
         </Heading>
         <p className="muted mt-2">{story.summaryShort}</p>
+        <Glossary terms={story.glossary} />
         {warn ? (
           <p className="mt-2 flex gap-2 font-semibold text-red-ink">
             <span className="mt-0.5 shrink-0">

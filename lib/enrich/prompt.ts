@@ -1,4 +1,4 @@
-// prompt version: 7
+// prompt version: 8
 //
 // Bump the number above whenever the system prompt text below changes. ADR 0003
 // calls the prompt "the product": a version marker is what lets a run logged in
@@ -11,7 +11,7 @@
 import { laneGroup, type Item, type Lane, type Story } from '../db/types';
 
 /** Mirrors the `prompt version` comment above; logged with every run so a story can be traced to its wording. */
-export const PROMPT_VERSION = 7;
+export const PROMPT_VERSION = 8;
 
 /** ADR 0003: bodies are capped so a 60-item batch has a bounded input cost. */
 export const MAX_BODY_CHARS = 2000;
@@ -29,6 +29,25 @@ const LANE_NOTES: Record<Lane, string> = {
     'game engines, tools, the craft and the business of making games. Score engine news by what it changes: a major version, a new rendering, physics, networking or platform capability, a licensing or pricing change, or a new engine that is gaining real attention is 4 or 5; patch releases, bug-fix builds, quality-of-life editor tweaks and dev snapshots are 1 or 2',
   games: 'game releases, studios, storefronts, the games industry',
 };
+
+/**
+ * How to pick and define glossary terms. Shared with scripts/glossary-backfill.ts
+ * so a backfilled story's terms are chosen by the same rules as a fresh one's.
+ */
+export const GLOSSARY_RULES = `- "glossary": the jargon in the story's summaries, so a reader can look a term up
+  without leaving the feed. The reader is a software developer: skip everyday
+  developer words (API, repo, open source, pip, GPU, LLM, benchmark, SDK, CLI) and
+  plain product or company names. Do define domain jargon from machine learning,
+  audio, graphics, finance, betting, game engines and the like, such as "vocoder",
+  "open-weight model", "codec tokens", "zero-shot cloning", "LoRA", "PBR",
+  "funding rate" or "closing line value".
+- Use only terms that appear in summaryShort or summaryDetail, written as they
+  appear there, in the order they first appear. At most 6 terms; [] when there
+  is no jargon, which is normal for many stories.
+- Each "definition" is one plain sentence of at most 20 words that says what the
+  thing is or does in general, not what this story says about it. No "refers to",
+  no restating the term, no examples.
+    {"term": "Vocoder", "definition": "Turns acoustic features such as a spectrogram into an audible waveform."}`;
 
 /**
  * The stable half of the call. Nothing per-run goes in here — lane, items and
@@ -69,7 +88,8 @@ Attach items to a story that already exists:
     "storyId": 45,
     "updatedShort": "...",          // optional
     "updatedDetail": "..." | null,  // optional; string if updatedScore >= 3, else null
-    "updatedScore": 4               // optional
+    "updatedScore": 4,              // optional
+    "updatedGlossary": [ ... ]      // optional; required with updatedShort or updatedDetail
   }
 
 Create a new story:
@@ -80,7 +100,8 @@ Create a new story:
       "title": "...",
       "summaryShort": "...",
       "summaryDetail": "..." | null,   // string if score >= 3, null if score <= 2
-      "score": 3
+      "score": 3,
+      "glossary": [ { "term": "...", "definition": "..." } ]   // may be []
     }
   }
 
@@ -101,8 +122,8 @@ HARD RULES
    news feed. Items in these batches may also attach to an open story in any of
    the three lanes.
 4. Every new story must have at least one item behind it.
-5. Every "newStory" object carries all five keys every time: lane, title,
-   summaryShort, summaryDetail and score. "score" is the one most often left out
+5. Every "newStory" object carries all six keys every time: lane, title,
+   summaryShort, summaryDetail, score and glossary. "score" is the one most often left out
    by mistake; an assignment without it is rejected and the whole batch is retried.
 6. summaryDetail and score move together. Score 3, 4 or 5 means summaryDetail is a
    non-empty markdown string. Score 1 or 2 means summaryDetail is exactly null.
@@ -128,6 +149,9 @@ SUMMARIES
   It ends with a "**Try this:**" line naming where to try it (a Hugging Face
   space, an API page, a repo, an add-on) and one asset to test it on.
 
+GLOSSARY
+${GLOSSARY_RULES}
+
 SCORE RUBRIC
 5 = major: a frontier model release, an engine major version, a market-moving
     event, a new #1 on a major AI leaderboard (Arena, SWE-bench, ARC-AGI), a AAA
@@ -145,7 +169,10 @@ Update a story only when a new item materially changes it: a new fact, a
 correction, a reversal, a much bigger reaction. Extra coverage of the same fact is
 not a material change — attach the items and leave the summary fields out. When you
 do include "updatedScore" you must also include "updatedDetail" in the same object:
-a string when the new score is 3 or higher, null when it is 1 or 2.
+a string when the new score is 3 or higher, null when it is 1 or 2. When you
+include "updatedShort" or "updatedDetail", also include "updatedGlossary": the
+complete glossary for the summaries as you have now written them. It replaces the
+old one.
 
 DROPPING
 Put an item in "dropped" when it is advertising, a giveaway, a meme, engagement

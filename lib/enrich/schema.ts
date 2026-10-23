@@ -11,13 +11,39 @@
  * validator is less code than a dependency, and the validator has to encode rules a
  * JSON Schema cannot express anyway (ids must come from *this* batch, exactly once).
  */
-import { LANES, type Assignment, type EnrichResult, type Lane, type NewStoryInput, type Score } from '../db/types';
+import {
+  LANES,
+  type Assignment,
+  type EnrichResult,
+  type GlossaryTerm,
+  type Lane,
+  type NewStoryInput,
+  type Score,
+} from '../db/types';
 
 /** Detail summaries exist only at or above this score (ADR 0003). */
 export const DETAIL_MIN_SCORE = 3;
 
 /** Postgres `stories.title` is unbounded text; this is a sanity bound, not a DB limit. */
 const MAX_TITLE_CHARS = 300;
+
+/** Caps on what the model may put in a story's glossary; extras are trimmed, not rejected. */
+export const MAX_GLOSSARY_TERMS = 8;
+const MAX_TERM_CHARS = 80;
+const MAX_DEFINITION_CHARS = 240;
+
+export const GLOSSARY_SCHEMA = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      term: { type: 'string' },
+      definition: { type: 'string' },
+    },
+    required: ['term', 'definition'],
+    additionalProperties: false,
+  },
+} as const;
 
 const NEW_STORY_SCHEMA = {
   type: 'object',
@@ -27,8 +53,9 @@ const NEW_STORY_SCHEMA = {
     summaryShort: { type: 'string' },
     summaryDetail: { type: ['string', 'null'] },
     score: { type: 'integer', minimum: 1, maximum: 5 },
+    glossary: GLOSSARY_SCHEMA,
   },
-  required: ['lane', 'title', 'summaryShort', 'summaryDetail', 'score'],
+  required: ['lane', 'title', 'summaryShort', 'summaryDetail', 'score', 'glossary'],
   additionalProperties: false,
 } as const;
 
@@ -47,6 +74,7 @@ export const ENRICH_JSON_SCHEMA = {
               updatedShort: { type: 'string' },
               updatedDetail: { type: ['string', 'null'] },
               updatedScore: { type: 'integer', minimum: 1, maximum: 5 },
+              updatedGlossary: GLOSSARY_SCHEMA,
             },
             required: ['itemIds', 'storyId'],
             additionalProperties: false,
@@ -201,6 +229,7 @@ export function validateEnrichResult(
           summaryShort: (s.summaryShort as string).trim(),
           summaryDetail: typeof s.summaryDetail === 'string' ? s.summaryDetail : null,
           score: s.score as Score,
+          glossary: sanitizeGlossary(s.glossary),
         };
         assignments.push({ itemIds, newStory });
       }
@@ -221,6 +250,7 @@ export function validateEnrichResult(
       if (!nonEmptyString(raw.updatedShort)) errors.push(`${where}.updatedShort is empty`);
       else update.updatedShort = raw.updatedShort.trim();
     }
+    if (Array.isArray(raw.updatedGlossary)) update.updatedGlossary = sanitizeGlossary(raw.updatedGlossary);
     if (raw.updatedScore !== undefined) {
       if (!isScore(raw.updatedScore)) {
         errors.push(`${where}.updatedScore ${JSON.stringify(raw.updatedScore)} is not 1-5`);
@@ -254,6 +284,30 @@ export function validateEnrichResult(
 
   const leftover = pendingIds.filter((id) => !claimed.has(id));
   return { ok: true, value: { assignments, dropped }, leftover };
+}
+
+/**
+ * The glossary is a reading aid, not part of the story, so a bad one never fails
+ * the batch: a malformed entry is skipped, a missing glossary becomes empty, and the
+ * list is trimmed to the cap. Rejecting would cost a whole retry over a definition.
+ * Duplicate terms (ignoring case) keep their first definition.
+ */
+export function sanitizeGlossary(raw: unknown): GlossaryTerm[] {
+  if (!Array.isArray(raw)) return [];
+  const out: GlossaryTerm[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (out.length >= MAX_GLOSSARY_TERMS) break;
+    if (!isObject(entry) || !nonEmptyString(entry.term) || !nonEmptyString(entry.definition)) continue;
+    const term = entry.term.replace(/\s+/g, ' ').trim();
+    const definition = entry.definition.replace(/\s+/g, ' ').trim();
+    if (term.length > MAX_TERM_CHARS || definition.length > MAX_DEFINITION_CHARS) continue;
+    const key = term.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ term, definition });
+  }
+  return out;
 }
 
 function checkDetail(

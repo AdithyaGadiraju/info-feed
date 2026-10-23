@@ -36,6 +36,7 @@ function story(overrides: Partial<StoryWithLink> = {}): StoryWithLink {
     lane: 'games',
     title: 'Xbox secures GTA 6 streaming rights',
     summaryShort: 'Microsoft reportedly bought exclusive streaming rights.',
+    glossary: [],
     summaryDetail: null,
     score: 4,
     firstSeenAt: UPDATED,

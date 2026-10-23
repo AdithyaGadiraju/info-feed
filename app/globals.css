@@ -109,6 +109,51 @@
   .story-chevron.is-open {
     transform: rotate(180deg);
   }
+  /* Glossary: nested <details> under the summary. Lifted above the title button's
+     ::after overlay so its clicks open terms instead of toggling the card. */
+  .glossary {
+    position: relative;
+    z-index: 1;
+  }
+  .glossary summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .glossary summary::-webkit-details-marker {
+    display: none;
+  }
+  .glossary summary:hover .eyebrow,
+  .glossary-term > summary:hover {
+    color: var(--text);
+  }
+  /* The chevron points right when closed and down when open, like ▸ / ▾. */
+  .glossary-chevron {
+    display: inline-flex;
+    color: var(--text-3);
+    transform: rotate(-90deg);
+    transition: transform 0.15s;
+  }
+  details[open] > summary > .glossary-chevron {
+    transform: none;
+  }
+  .glossary-list {
+    margin-top: 4px;
+    margin-left: 6px;
+    padding-left: 12px;
+    border-left: 1px solid var(--border-strong);
+  }
+  .glossary-term > summary {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-2);
+  }
+  .glossary-term > p {
+    padding: 0 0 8px 20px;
+  }
   .story-foot {
     display: flex;
     align-items: center;

@@ -2,7 +2,12 @@ import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import type { EnrichResult, Item, Lane } from '../../lib/db/types';
 import { buildSystemPrompt, buildUserPrompt } from '../../lib/enrich/prompt';
-import { extractJsonObject, validateEnrichResult } from '../../lib/enrich/schema';
+import {
+  extractJsonObject,
+  MAX_GLOSSARY_TERMS,
+  sanitizeGlossary,
+  validateEnrichResult,
+} from '../../lib/enrich/schema';
 import { completeViaCli } from '../../lib/enrich/transport';
 
 const PENDING = [1, 2, 3, 4];
@@ -20,6 +25,7 @@ function validResponse(): Record<string, unknown> {
           summaryShort: 'A lab released a new frontier model. Pricing and limits are published.',
           summaryDetail: '**What happened.** A lab released a new model, per "Lab ships model".',
           score: 4,
+          glossary: [{ term: 'Frontier model', definition: 'One of the most capable models available at the time.' }],
         },
       },
       { itemIds: [3], storyId: 10, updatedShort: 'The rollout now covers every region.' },
@@ -126,6 +132,53 @@ describe('validateEnrichResult', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.leftover).toEqual([4]);
+  });
+});
+
+describe('glossary', () => {
+  it('carries a new story glossary and an updatedGlossary through', () => {
+    const body = validResponse();
+    const assignments = body.assignments as Array<Record<string, unknown>>;
+    assignments[1].updatedGlossary = [{ term: 'Rollout', definition: 'A staged release to users.' }];
+    const result = validate(body);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [created, updated] = result.value.assignments;
+    expect('newStory' in created && created.newStory.glossary).toEqual([
+      { term: 'Frontier model', definition: 'One of the most capable models available at the time.' },
+    ]);
+    expect('storyId' in updated && updated.updatedGlossary).toEqual([
+      { term: 'Rollout', definition: 'A staged release to users.' },
+    ]);
+  });
+
+  it('never fails the batch over a glossary: missing becomes []', () => {
+    const body = validResponse();
+    const story = (body.assignments as Array<{ newStory?: Record<string, unknown> }>)[0].newStory!;
+    delete story.glossary;
+    const result = validate(body);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const created = result.value.assignments[0];
+    expect('newStory' in created && created.newStory.glossary).toEqual([]);
+  });
+
+  it('skips malformed and duplicate terms, collapses whitespace and caps the list', () => {
+    const raw = [
+      { term: '  Vocoder ', definition: 'Turns acoustic\n features into audio.' },
+      { term: 'vocoder', definition: 'A second definition that loses.' },
+      { term: '', definition: 'No term.' },
+      { term: 'No definition' },
+      'not an object',
+      { term: 'Long', definition: 'x'.repeat(500) },
+      ...Array.from({ length: 20 }, (_, i) => ({ term: `T${i}`, definition: 'd.' })),
+    ];
+    const out = sanitizeGlossary(raw);
+    expect(out[0]).toEqual({ term: 'Vocoder', definition: 'Turns acoustic features into audio.' });
+    expect(out.map((t) => t.term)).not.toContain('vocoder');
+    expect(out.map((t) => t.term)).not.toContain('Long');
+    expect(out).toHaveLength(MAX_GLOSSARY_TERMS);
+    expect(sanitizeGlossary('nope')).toEqual([]);
   });
 });
 
