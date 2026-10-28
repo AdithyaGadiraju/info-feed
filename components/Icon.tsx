@@ -42,6 +42,12 @@ const PATHS = {
   back: <path d="m12 19-7-7 7-7M19 12H5" />,
   external: <path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />,
   chevron: <path d="m6 9 6 6 6-6" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </>
+  ),
   inbox: (
     <>
       <path d="M22 12h-6l-2 3h-4l-2-3H2" />

@@ -7,6 +7,7 @@
  */
 import type { Row, Sql } from 'postgres';
 import { db } from './client';
+import { searchPatterns } from '../feed/params';
 import {
   EXCLUDED_STORY_ID,
   isNewStoryAssignment,
@@ -65,6 +66,9 @@ function toStory(r: Row): Story {
     updatedAt: r.updated_at as Date,
     digestedAt: (r.digested_at as Date | null) ?? null,
     verification: toVerification(r),
+    // Null when unset, and also when the query did not select the column
+    // (getOpenStories does not: clustering has no use for it).
+    doneAt: (r.done_at as Date | null) ?? null,
   };
 }
 
@@ -311,6 +315,10 @@ export interface ApplyResult {
  * merely gains coverage. ADR 0003 says only material updates should bump it; the
  * attach-only bump also keeps a still-covered story inside getOpenStories' 48 h
  * window, so changing it is a design decision, not a one-line fix.
+ *
+ * Only a material update clears `done_at`. The reader finished the summary as it
+ * stood; a rewritten summary or a new score is a different story to read, while
+ * more sources behind the same summary, or a regenerated glossary, are not.
  */
 export async function applyAssignments(lane: Lane, result: EnrichResult): Promise<ApplyResult> {
   const sql = db();
@@ -353,7 +361,10 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
               score          = COALESCE(${a.updatedScore ?? null}, score),
               glossary       = CASE WHEN ${a.updatedGlossary !== undefined}
                                     THEN ${tx.json((a.updatedGlossary ?? []) as never)} ELSE glossary END,
-              updated_at     = date_trunc('milliseconds', now())
+              updated_at     = date_trunc('milliseconds', now()),
+              -- New definitions for the same words are not a new story to read.
+              done_at        = CASE WHEN ${a.updatedShort !== undefined || a.updatedDetail !== undefined || a.updatedScore !== undefined}
+                                    THEN NULL ELSE done_at END
             WHERE id = ${storyId}
           `;
           out.updated += res.count;
@@ -397,7 +408,7 @@ export async function getDigestStories(
   const sql = db();
   const rows = await sql`
     SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary,
-           first_seen_at, updated_at, digested_at,
+           first_seen_at, updated_at, digested_at, done_at,
            verdict, verdict_note, verdict_sources, verified_at,
            (SELECT i.url FROM items i WHERE i.story_id = stories.id
              ORDER BY ${bestLinkFirst(sql)} LIMIT 1) AS primary_url
@@ -504,22 +515,41 @@ export async function getLastDigestAt(maxHours = 72): Promise<Date> {
 /**
  * One statement per feed page (ADR 0001). Keyset pagination on `(updated_at, id)`
  * so scrolling never skips or repeats a story when new ones land mid-scroll.
+ *
+ * The page is one side of the done split: stories still to read by default, or
+ * only the done ones with `done: true`. Every filter here, including the date
+ * window (`since` inclusive, `until` exclusive, both on `updated_at`) and the
+ * search, is a plain WHERE clause on the same `updated_at DESC` order, so one
+ * cursor shape serves every combination and results never leave date order.
+ *
+ * Search is `ILIKE` over the title and both summaries, every word required
+ * (`searchPatterns`). A personal feed is a few thousand rows; a tsvector index
+ * and ranking would buy nothing a reader could notice and would cost the shared
+ * cursor.
  */
 export async function getFeedPage(opts: {
   lanes?: Lane[];
   minScore?: number;
   cursor?: FeedCursor | null;
   limit?: number;
+  done?: boolean;
+  since?: Date | null;
+  until?: Date | null;
+  q?: string;
 }): Promise<FeedPage> {
   const sql = db();
   const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
   const minScore = opts.minScore ?? 3;
   const lanes = opts.lanes && opts.lanes.length > 0 ? opts.lanes : null;
   const cursor = opts.cursor ?? null;
+  const done = opts.done ?? false;
+  const since = opts.since ?? null;
+  const until = opts.until ?? null;
+  const patterns = searchPatterns(opts.q ?? '');
 
   const rows = await sql`
     SELECT s.id::int AS id, s.lane, s.title, s.summary_short, s.summary_detail, s.score, s.glossary,
-           s.first_seen_at, s.updated_at, s.digested_at,
+           s.first_seen_at, s.updated_at, s.digested_at, s.done_at,
            s.verdict, s.verdict_note, s.verdict_sources, s.verified_at,
            cnt.item_count, cnt.primary_url
     FROM stories s
@@ -531,7 +561,15 @@ export async function getFeedPage(opts: {
       FROM items i WHERE i.story_id = s.id
     ) cnt ON true
     WHERE s.score >= ${minScore}
+      ${done ? sql`AND s.done_at IS NOT NULL` : sql`AND s.done_at IS NULL`}
       ${lanes ? sql`AND s.lane = ANY(${sql.array(lanes)}::text[])` : sql``}
+      ${since ? sql`AND s.updated_at >= ${since}` : sql``}
+      ${until ? sql`AND s.updated_at < ${until}` : sql``}
+      ${
+        patterns.length > 0
+          ? sql`AND concat_ws(' ', s.title, s.summary_short, s.summary_detail) ILIKE ALL(${sql.array(patterns)}::text[])`
+          : sql``
+      }
       ${
         cursor
           ? sql`AND (s.updated_at, s.id) < (${cursor.updatedAt}::timestamptz, ${cursor.id}::bigint)`
@@ -553,6 +591,24 @@ export async function getFeedPage(opts: {
     rows.length > limit && last ? { updatedAt: last.updatedAt.toISOString(), id: last.id } : null;
 
   return { stories, nextCursor };
+}
+
+/**
+ * The Done button. Idempotent: marking a done story done again keeps its original
+ * `done_at`, so a phone and a desktop both pressing it cannot race into a later
+ * timestamp. `updated_at` is left alone (column comment in schema.sql). Returns
+ * the story's new state, or null when there is no such story.
+ */
+export async function setStoryDone(id: number, done: boolean): Promise<{ doneAt: Date | null } | null> {
+  const sql = db();
+  const [row] = await sql`
+    UPDATE stories
+    SET done_at = CASE WHEN ${done} THEN COALESCE(done_at, now()) ELSE NULL END
+    WHERE id = ${id}
+    RETURNING done_at
+  `;
+  if (!row) return null;
+  return { doneAt: (row.done_at as Date | null) ?? null };
 }
 
 // ---- glossary backfill ----
@@ -594,7 +650,7 @@ export async function getStoryWithItems(id: number): Promise<StoryWithItems | nu
   const sql = db();
   const [row] = await sql`
     SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary,
-           first_seen_at, updated_at, digested_at,
+           first_seen_at, updated_at, digested_at, done_at,
            verdict, verdict_note, verdict_sources, verified_at,
            (SELECT i.url FROM items i WHERE i.story_id = stories.id
              ORDER BY ${bestLinkFirst(sql)} LIMIT 1) AS primary_url

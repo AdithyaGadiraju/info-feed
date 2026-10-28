@@ -43,6 +43,7 @@ function story(overrides: Partial<StoryWithLink> = {}): StoryWithLink {
     updatedAt: UPDATED,
     digestedAt: null,
     verification: null,
+    doneAt: null,
     ...overrides,
   };
 }

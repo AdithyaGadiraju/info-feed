@@ -22,10 +22,11 @@ import {
  */
 type WireVerification = Omit<Verification, 'checkedAt'> & { checkedAt: string };
 
-type WithIsoDates<T> = Omit<T, 'firstSeenAt' | 'updatedAt' | 'digestedAt' | 'verification'> & {
+type WithIsoDates<T> = Omit<T, 'firstSeenAt' | 'updatedAt' | 'digestedAt' | 'doneAt' | 'verification'> & {
   firstSeenAt: string;
   updatedAt: string;
   digestedAt: string | null;
+  doneAt: string | null;
   verification: WireVerification | null;
 };
 
@@ -45,6 +46,7 @@ export function reviveStory(r: WireStoryWithCount): StoryWithCount {
     firstSeenAt: new Date(r.firstSeenAt),
     updatedAt: new Date(r.updatedAt),
     digestedAt: r.digestedAt ? new Date(r.digestedAt) : null,
+    doneAt: r.doneAt ? new Date(r.doneAt) : null,
     verification: reviveVerification(r.verification),
   };
 }
@@ -55,6 +57,7 @@ export function reviveStoryWithItems(r: WireStoryWithItems): StoryWithItems {
     firstSeenAt: new Date(r.firstSeenAt),
     updatedAt: new Date(r.updatedAt),
     digestedAt: r.digestedAt ? new Date(r.digestedAt) : null,
+    doneAt: r.doneAt ? new Date(r.doneAt) : null,
     verification: reviveVerification(r.verification),
     items: r.items.map((i) => ({ ...i, publishedAt: new Date(i.publishedAt) })),
   };
@@ -131,6 +134,21 @@ function VerdictBadge({ verification, outdated }: { verification: Verification; 
       <Icon name={outdated ? 'clock' : style.icon} size={14} />
       {label}
       {outdated ? ', outdated' : ''}
+    </span>
+  );
+}
+
+/**
+ * The yellow tick is the house mark for "done" (docs/ui-design.md) and is never
+ * shown without the word, so the state does not rest on colour.
+ */
+function DoneTag({ doneAt }: { doneAt: Date }) {
+  return (
+    <span className="tag" title={`Marked done ${relativeTime(doneAt)}`} suppressHydrationWarning>
+      <span className="done-tick" aria-hidden="true">
+        <Icon name="check" size={12} />
+      </span>
+      Done
     </span>
   );
 }
@@ -241,6 +259,12 @@ export interface StoryCardProps {
   defaultExpanded?: boolean;
   /** The permalink page makes the story title its h1; in the feed each title is an h2. */
   headingLevel?: 1 | 2;
+  /**
+   * Fired after the server has accepted a Done or Undo, with the story's new
+   * `doneAt`. The feed uses it to drop a card that no longer belongs to the side
+   * it is showing; the permalink page has no list and leaves it unset.
+   */
+  onDoneChange?: (story: StoryWithCount, doneAt: Date | null) => void;
 }
 
 /**
@@ -255,12 +279,42 @@ export default function StoryCard({
   initialDetail = null,
   defaultExpanded = false,
   headingLevel = 2,
+  onDoneChange,
 }: StoryCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [detail, setDetail] = useState<StoryWithItems | null>(initialDetail);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const panelId = useId();
+
+  // Done lives on the card, not the list: the permalink page has no list, and the
+  // feed only needs to hear about a change (onDoneChange), not own it.
+  const [doneAt, setDoneAt] = useState<Date | null>(story.doneAt);
+  const [marking, setMarking] = useState(false);
+  const [markError, setMarkError] = useState<string | null>(null);
+
+  const setDone = useCallback(
+    (done: boolean) => {
+      if (marking) return;
+      setMarking(true);
+      setMarkError(null);
+      fetch(`/api/story/${story.id}/done`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ done }),
+      })
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`request failed (${res.status})`);
+          const body = (await res.json()) as { doneAt: string | null };
+          const next = body.doneAt ? new Date(body.doneAt) : null;
+          setDoneAt(next);
+          onDoneChange?.(story, next);
+        })
+        .catch((e: unknown) => setMarkError(e instanceof Error ? e.message : 'could not save'))
+        .finally(() => setMarking(false));
+    },
+    [marking, story, onDoneChange],
+  );
 
   const toggle = useCallback(() => {
     const next = !expanded;
@@ -299,6 +353,7 @@ export default function StoryCard({
           <span className="eyebrow">{LANE_LABELS[story.lane]}</span>
           <ScorePips score={story.score} />
           {verification ? <VerdictBadge verification={verification} outdated={outdated} /> : null}
+          {doneAt ? <DoneTag doneAt={doneAt} /> : null}
           <span className="subtle small ml-auto" suppressHydrationWarning>
             {relativeTime(story.updatedAt)}
           </span>
@@ -326,14 +381,41 @@ export default function StoryCard({
         </p>
       </div>
 
-      {story.primaryUrl ? (
-        <a href={story.primaryUrl} target="_blank" rel="noopener noreferrer" className="story-foot">
-          <span>Read the original</span>
-          <span className="subtle truncate font-normal">{hostOf(story.primaryUrl) ?? story.primaryUrl}</span>
-          <span className="ml-auto shrink-0">
+      {/* The foot is the card's action row: the article on the left, Done on the
+          right. It is the one place on the card that is not the title's toggle. */}
+      <div className="story-foot">
+        {story.primaryUrl ? (
+          <a href={story.primaryUrl} target="_blank" rel="noopener noreferrer" className="story-link">
+            <span>Read the original</span>
+            <span className="subtle truncate font-normal">{hostOf(story.primaryUrl) ?? story.primaryUrl}</span>
             <Icon name="external" size={14} />
-          </span>
-        </a>
+          </a>
+        ) : (
+          <span className="story-link" aria-hidden="true" />
+        )}
+        <button
+          type="button"
+          className={`btn btn-sm ${doneAt ? 'btn-ghost' : 'btn-secondary'}`}
+          onClick={() => setDone(!doneAt)}
+          disabled={marking}
+          aria-busy={marking}
+        >
+          {doneAt ? (
+            <>
+              Undo<span className="visually-hidden"> done</span>
+            </>
+          ) : (
+            <>
+              <Icon name="check" size={14} />
+              Mark done
+            </>
+          )}
+        </button>
+      </div>
+      {markError ? (
+        <p className="story-foot-error small text-red-ink" role="alert">
+          Could not save: {markError}
+        </p>
       ) : null}
 
       {expanded ? (

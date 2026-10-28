@@ -61,6 +61,7 @@ function story(overrides: Partial<StoryWithLink> = {}): StoryWithLink {
     updatedAt: new Date('2026-09-13T00:00:00Z'),
     digestedAt: null,
     verification: null,
+    doneAt: null,
     ...overrides,
   };
 }

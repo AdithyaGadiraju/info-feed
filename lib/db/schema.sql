@@ -108,3 +108,11 @@ ALTER TABLE stories ADD COLUMN IF NOT EXISTS verified_at     timestamptz;
 -- column existed, which scripts/glossary-backfill.ts fills in. [] means generated
 -- and the story has no jargon worth defining.
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS glossary jsonb;
+
+-- When the reader pressed Done on the story in the web feed. NULL means still to
+-- read. The feed hides done stories unless asked for them (?done=1); the digest
+-- ignores the column. A material update by enrichment (summary or score rewritten
+-- in applyAssignments) clears it, because the reader finished a different version
+-- of the story; merely gaining more sources does not. Writing it never touches
+-- updated_at: finishing a story is not a change to it.
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS done_at timestamptz;

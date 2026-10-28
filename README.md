@@ -52,6 +52,21 @@ digest, worker and web chips skip it until it is taken out of the list again.
 
 It works identically on macOS and Windows: no native modules, no shell-specific scripts.
 
+### The web feed
+
+`/` is the live feed, newest change first, filtered by lane, minimum score, a window
+of calendar days on the story's last change, and a search over the title and both
+summaries (every word must appear; results stay in date order). Every filter is a URL
+param, so a view is a link: `/?lanes=ai&minScore=4&from=2026-10-01&q=godot`. Stories
+never expire; only the fetched article bodies are pruned after 30 days.
+
+Each story has a **Mark done** button. A done story leaves the feed and sits under
+Show → Done, where **Undo** brings it back. Done is stored on the story
+(`stories.done_at`), so it follows you between phone and desktop. When enrichment
+rewrites a done story's summary or score it comes back as unread, because what you
+read is not what the story says any more; a story that merely gains more sources stays
+done. The Discord digest ignores done entirely.
+
 ## Setup
 
 Requires **Node 24+** and, for the default LLM transport, the **`claude` CLI** logged in

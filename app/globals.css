@@ -154,20 +154,58 @@
   .glossary-term > p {
     padding: 0 0 8px 20px;
   }
+  /* Foot: the article link fills the left, the Done button sits at the right. */
   .story-foot {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
     min-height: var(--tap);
     padding: 0 var(--panel-pad-x);
     border-top: 1px solid var(--border);
+  }
+  .story-link {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: var(--tap);
     font-size: 0.875rem;
     font-weight: 600;
     color: var(--accent-ink);
     text-decoration: none;
   }
-  .story-foot:hover {
-    background: var(--surface-2);
+  .story-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  .story-link > span:first-child {
+    white-space: nowrap;
+  }
+  .story-link > svg {
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+  .story-foot > .btn {
+    flex-shrink: 0;
+  }
+  .story-foot-error {
+    padding: 8px var(--panel-pad-x) 12px;
+  }
+  /* Done tick: the one use of the highlight colour (docs/ui-design.md), always beside the word. */
+  .done-tick {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: var(--radius-sm);
+    background: var(--highlight);
+    color: var(--on-highlight);
+    flex-shrink: 0;
+  }
+  .done-tick svg {
+    width: 12px;
+    height: 12px;
   }
   .story-detail {
     border-top: 1px solid var(--border);
@@ -181,6 +219,9 @@
     }
     .story-foot {
       padding: 0 var(--panel-pad-x-lg);
+    }
+    .story-foot-error {
+      padding: 8px var(--panel-pad-x-lg) 12px;
     }
     .story-title-lg {
       font-size: 1.875rem;

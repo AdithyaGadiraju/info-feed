@@ -661,12 +661,22 @@ export default function DesignPage() {
                 <Icon name="feed" size={14} />
                 Reddit
               </span>
+              {/* Done: the highlight tick, always with the word. */}
+              <span className="tag">
+                <span className="done-tick" aria-hidden="true">
+                  <Icon name="check" size={12} />
+                </span>
+                Done
+              </span>
             </div>
-            <div>
+            <div className="row">
               <a className="btn btn-secondary" href="#data">
                 Open source
                 <Icon name="external" size={18} />
               </a>
+              <button className="btn btn-ghost btn-sm" type="button">
+                Undo<span className="visually-hidden"> done</span>
+              </button>
             </div>
           </article>
         </div>

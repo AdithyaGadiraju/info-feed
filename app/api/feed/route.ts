@@ -2,7 +2,15 @@ import { NextResponse, type NextRequest } from 'next/server';
 // Relative rather than `@/`: this module is unit-tested by vitest, which resolves
 // no tsconfig `paths` alias, and vitest.config.ts is owned elsewhere.
 import { getFeedPage, getStoryWithItems } from '../../../lib/db/queries';
-import { isLane, type FeedCursor, type Lane } from '../../../lib/db/types';
+import type { FeedCursor } from '../../../lib/db/types';
+import {
+  dayRange,
+  isDay,
+  parseDone,
+  parseLanes,
+  parseMinScore,
+  parseSearch,
+} from '../../../lib/feed/params';
 
 // `postgres` is a node driver, and the feed is never cacheable.
 export const runtime = 'nodejs';
@@ -10,7 +18,6 @@ export const dynamic = 'force-dynamic';
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
-const DEFAULT_MIN_SCORE = 3;
 
 function badRequest(error: string): NextResponse {
   return NextResponse.json({ error }, { status: 400 });
@@ -30,19 +37,9 @@ const CURSOR_TIMESTAMP_RE =
 /**
  * Nothing from the query string is trusted: a bad lane would otherwise reach
  * Postgres as a text comparison and a bad cursor as a timestamptz cast, and the
- * cast is the one that turns a typo into a 500.
+ * cast is the one that turns a typo into a 500. The shared parsers in
+ * lib/feed/params.ts do the reading; this route decides what is a 400.
  */
-function parseLanes(raw: string | null): Lane[] | { error: string } {
-  if (raw === null || raw.trim() === '') return [];
-  const parts = raw
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter((s) => s !== '');
-  const bad = parts.filter((s) => !isLane(s));
-  if (bad.length > 0) return { error: `unknown lane: ${bad.join(', ')}` };
-  return parts as Lane[];
-}
-
 function parseIntIn(raw: string | null, fallback: number, min: number, max: number): number {
   if (raw === null || raw.trim() === '') return fallback;
   const n = Number.parseInt(raw, 10);
@@ -68,6 +65,13 @@ function parseCursor(raw: string | null): FeedCursor | null | { error: string } 
   }
 }
 
+/** A day param is either absent, empty, or a real `YYYY-MM-DD`; anything else is a 400. */
+function parseDay(raw: string | null, name: string): string | { error: string } {
+  if (raw === null || raw.trim() === '') return '';
+  const v = raw.trim();
+  return isDay(v) ? v : { error: `${name} must be a date, YYYY-MM-DD` };
+}
+
 function isError(v: unknown): v is { error: string } {
   return typeof v === 'object' && v !== null && 'error' in v;
 }
@@ -90,8 +94,9 @@ function serverError(context: string, err: unknown): NextResponse {
  * its own route file because the expanded card needs exactly one extra shape and a
  * second route module would add a file for four lines of handler.
  *
- * Otherwise: a keyset-paginated feed page. The cursor travels as base64 JSON, one
- * opaque param the client hands straight back.
+ * Otherwise: a keyset-paginated feed page, filtered by `lanes`, `minScore`, `done`,
+ * a `from`..`to` window of calendar days and a `q` search (lib/feed/params.ts).
+ * The cursor travels as base64 JSON, one opaque param the client hands straight back.
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const q = req.nextUrl.searchParams;
@@ -113,18 +118,27 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ story }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
-  const lanes = parseLanes(q.get('lanes'));
-  if (isError(lanes)) return badRequest(lanes.error);
+  const { lanes, unknown } = parseLanes(q.get('lanes'));
+  if (unknown.length > 0) return badRequest(`unknown lane: ${unknown.join(', ')}`);
 
   const cursor = parseCursor(q.get('cursor'));
   if (isError(cursor)) return badRequest(cursor.error);
 
-  const minScore = parseIntIn(q.get('minScore'), DEFAULT_MIN_SCORE, 1, 5);
+  const from = parseDay(q.get('from'), 'from');
+  if (isError(from)) return badRequest(from.error);
+  const to = parseDay(q.get('to'), 'to');
+  if (isError(to)) return badRequest(to.error);
+  if (from && to && from > to) return badRequest('from must not be after to');
+  const { since, until } = dayRange(from, to);
+
+  const minScore = parseMinScore(q.get('minScore'));
   const limit = parseIntIn(q.get('limit'), DEFAULT_LIMIT, 1, MAX_LIMIT);
+  const done = parseDone(q.get('done'));
+  const search = parseSearch(q.get('q'));
 
   let page;
   try {
-    page = await getFeedPage({ lanes, minScore, cursor, limit });
+    page = await getFeedPage({ lanes, minScore, cursor, limit, done, since, until, q: search });
   } catch (err) {
     return serverError('getFeedPage', err);
   }

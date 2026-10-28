@@ -151,6 +151,11 @@ export interface Story {
    * are checked, so most stories below the digest threshold stay null for good.
    */
   verification: Verification | null;
+  /**
+   * When the reader marked the story done in the web feed; null while it is still
+   * to read. Cleared again by a material update (see applyAssignments).
+   */
+  doneAt: Date | null;
 }
 
 /** One item behind a story, as the fact-check prompt sees it. */

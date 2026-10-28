@@ -18,13 +18,14 @@ Set up with the `create-good-modern-ui` skill. Later sessions follow the brief b
 | Conditions | Normal, WCAG AA |
 | App type | Content: a reading feed plus story permalinks |
 | Navigation | Top bar: Feed, Design, theme toggle |
-| Form labels | Not used yet; inline-label fields if forms are added |
+| Form labels | Inline-label fields (`inline-field`) for the From and To dates; a `search-row` for search |
 | Long forms | None |
 | Interface tone | Plain and direct |
 | Required vs optional | Not used yet; mark "(optional)" if forms are added |
 | Lanes | Neutral eyebrow label, no per-lane colour |
 | Score | Five square pips in accent, with "Score n of 5" as the accessible name |
-| Filters | Square radio chips: lane (single select) and minimum score |
+| Filters | One card: a search row, then square radio chips for lane (single select), minimum score, Show (To read / Done) and Last changed (Any time / Today / 7 days / 30 days), then inline-label From and To date fields |
+| Done | A `btn-secondary btn-sm` "Mark done" at the right of the card foot, beside the article link. A done story shows a `tag` with the yellow `done-tick` and the word "Done", and the button becomes a ghost "Undo" |
 | Must not change | Feed logic, URL params, API shapes, basic auth |
 
 ## Status meanings
@@ -36,7 +37,7 @@ Set up with the `create-good-modern-ui` skill. Later sessions follow the brief b
 | Red | Disputed, false, or a load error | alert or x icon + words |
 | Grey | Verdict outdated (story changed since) | clock icon + ", outdated" |
 | Accent | Action, link, current nav, score pips | words |
-| Yellow highlight | Done / confirmed ticks only | tick |
+| Yellow highlight | Done / confirmed ticks only | tick + "Done" |
 
 ## Rules
 - Tokens only; pages never hard-code colours, radii or shadows.

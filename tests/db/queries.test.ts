@@ -9,6 +9,7 @@ import {
   getStoryWithItems,
   insertPriceSnapshots,
   markItemsFiltered,
+  setStoryDone,
   upsertItems,
   finishRun,
   startRun,
@@ -319,6 +320,107 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
       SELECT count(*)::int AS n FROM stories WHERE lane = 'ai' AND score >= 5`;
     expect(new Set(seen).size).toBe(seen.length);
     expect(seen.length).toBe(Number(n));
+  });
+
+  it('marks a story done idempotently and clears it only on a material update', async () => {
+    const res = await upsertItems([item('d1'), item('d2'), item('d3')]);
+    const [d1, d2, d3] = res.inserted.map((r) => r.id);
+    await applyAssignments('ai', {
+      assignments: [
+        {
+          itemIds: [d1],
+          newStory: {
+            lane: 'ai',
+            title: '__test_queries__ done story',
+            summaryShort: 'Read me.',
+            summaryDetail: null,
+            score: 3,
+            glossary: [],
+          },
+        },
+      ],
+      dropped: [],
+    });
+    const sql = db();
+    const [story] = await sql`SELECT id::int AS id FROM stories WHERE title = '__test_queries__ done story'`;
+    const storyId = Number(story.id);
+
+    expect(await setStoryDone(storyId + 1_000_000, true)).toBeNull();
+
+    const first = await setStoryDone(storyId, true);
+    expect(first?.doneAt).toBeInstanceOf(Date);
+    const again = await setStoryDone(storyId, true);
+    expect(again?.doneAt?.getTime()).toBe(first?.doneAt?.getTime());
+    expect((await getStoryWithItems(storyId))?.doneAt?.getTime()).toBe(first?.doneAt?.getTime());
+
+    // More sources behind the same summary, or new definitions for it: still done.
+    await applyAssignments('ai', { assignments: [{ itemIds: [d2], storyId }], dropped: [] });
+    expect((await getStoryWithItems(storyId))?.doneAt).not.toBeNull();
+    await applyAssignments('ai', {
+      assignments: [{ itemIds: [], storyId, updatedGlossary: [{ term: 'TTS', definition: 'Text to speech.' }] }],
+      dropped: [],
+    });
+    expect((await getStoryWithItems(storyId))?.doneAt).not.toBeNull();
+
+    // A rewritten summary is a new story to read.
+    await applyAssignments('ai', {
+      assignments: [{ itemIds: [d3], storyId, updatedShort: 'Read me again.' }],
+      dropped: [],
+    });
+    expect((await getStoryWithItems(storyId))?.doneAt).toBeNull();
+
+    expect((await setStoryDone(storyId, false))?.doneAt).toBeNull();
+  });
+
+  it('splits the feed into to-read and done, and filters by day window and search', async () => {
+    const sql = db();
+    const [a] = await sql`
+      INSERT INTO stories (lane, title, summary_short, summary_detail, score)
+      VALUES ('ai', '__test_queries__ search alpha', 'Gaussian splats land in Godot.', 'A 100% win.', 5)
+      RETURNING id::int AS id`;
+    const [b] = await sql`
+      INSERT INTO stories (lane, title, summary_short, score, done_at, updated_at)
+      VALUES ('ai', '__test_queries__ search beta', 'Splats everywhere.', 5, now(), '2020-01-15T12:00:00Z')
+      RETURNING id::int AS id`;
+    const alpha = Number(a.id);
+    const beta = Number(b.id);
+    const idsOf = (p: Awaited<ReturnType<typeof getFeedPage>>) => p.stories.map((s) => s.id);
+
+    const toRead = await getFeedPage({ lanes: ['ai'], minScore: 5, q: 'splats', limit: 50 });
+    expect(idsOf(toRead)).toContain(alpha);
+    expect(idsOf(toRead)).not.toContain(beta);
+
+    const done = await getFeedPage({ lanes: ['ai'], minScore: 5, q: 'splats', done: true, limit: 50 });
+    expect(idsOf(done)).toContain(beta);
+    expect(idsOf(done)).not.toContain(alpha);
+
+    // Every word must match, across title and both summaries, regardless of case.
+    expect(idsOf(await getFeedPage({ lanes: ['ai'], minScore: 5, q: 'GODOT alpha', limit: 50 }))).toContain(alpha);
+    expect(idsOf(await getFeedPage({ lanes: ['ai'], minScore: 5, q: 'godot beta', limit: 50 }))).toEqual([]);
+    // Pattern characters are literal: "100%" must not become a wildcard match for "100".
+    expect(idsOf(await getFeedPage({ lanes: ['ai'], minScore: 5, q: '100%', limit: 50 }))).toContain(alpha);
+    expect(idsOf(await getFeedPage({ lanes: ['ai'], minScore: 5, q: '100_', limit: 50 }))).toEqual([]);
+
+    // A window on updated_at: beta sits in January 2020, alpha is now.
+    const jan2020 = await getFeedPage({
+      lanes: ['ai'],
+      minScore: 5,
+      done: true,
+      since: new Date('2020-01-15T00:00:00Z'),
+      until: new Date('2020-01-16T00:00:00Z'),
+      limit: 50,
+    });
+    expect(idsOf(jan2020)).toEqual([beta]);
+    const before2020 = await getFeedPage({
+      lanes: ['ai'],
+      minScore: 5,
+      done: true,
+      until: new Date('2020-01-01T00:00:00Z'),
+      limit: 50,
+    });
+    expect(idsOf(before2020)).not.toContain(beta);
+    const recent = await getFeedPage({ lanes: ['ai'], minScore: 5, since: new Date(Date.now() - 60_000), limit: 50 });
+    expect(idsOf(recent)).toContain(alpha);
   });
 
   it('writes price snapshots and run rows', async () => {

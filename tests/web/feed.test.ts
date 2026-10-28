@@ -4,7 +4,8 @@ import { NextRequest } from 'next/server';
 // Relative imports throughout: vitest.config.ts registers no `@/` alias.
 import { middleware } from '../../middleware';
 import { GET } from '../../app/api/feed/route';
-import { closeDb } from '../../lib/db/client';
+import { PUT as putDone } from '../../app/api/story/[id]/done/route';
+import { closeDb, db } from '../../lib/db/client';
 import { getFeedPage } from '../../lib/db/queries';
 
 const USER = process.env.FEED_USER;
@@ -122,6 +123,20 @@ describe('GET /api/feed parameter validation', () => {
     expect(res.status).toBe(400);
   });
 
+  it('rejects a day that is not YYYY-MM-DD, or a window that ends before it starts', async () => {
+    for (const qs of ['from=yesterday', 'to=2026-02-30', 'from=2026-10-29T00:00:00Z', 'from=2026-10-29&to=2026-10-01']) {
+      const res = await GET(request(`/api/feed?${qs}`));
+      expect(res.status, qs).toBe(400);
+    }
+  });
+
+  it.skipIf(!hasDb)('accepts an empty day, a one-day window and a search together', async () => {
+    const res = await GET(request('/api/feed?from=&to=2026-10-29&q=godot%20%25&done=1&minScore=1'));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { stories: unknown[] };
+    expect(Array.isArray(body.stories)).toBe(true);
+  });
+
   it.skipIf(!hasDb)('clamps minScore and limit into range instead of trusting them', async () => {
     const high = await GET(request('/api/feed?minScore=99&limit=99999'));
     expect(high.status).toBe(200);
@@ -153,5 +168,83 @@ describe.skipIf(!hasDb)('keyset pagination against the live database', () => {
     const second = await getFeedPage({ minScore: 1, limit: 1, cursor: first.nextCursor });
     const ids = [...first.stories, ...second.stories].map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+function putRequest(id: string, body: unknown): [NextRequest, { params: Promise<{ id: string }> }] {
+  const init = body === undefined ? { method: 'PUT' } : { method: 'PUT', body: JSON.stringify(body) };
+  return [
+    new NextRequest(new URL(`/api/story/${id}/done`, 'http://localhost:3000'), init),
+    { params: Promise.resolve({ id }) },
+  ];
+}
+
+describe('PUT /api/story/:id/done validation', () => {
+  it('rejects an id that is not a positive integer before touching the database', async () => {
+    for (const id of ['abc', '-1', '0', '1.5', '']) {
+      const res = await putDone(...putRequest(id, { done: true }));
+      expect(res.status, `id=${id}`).toBe(400);
+    }
+  });
+
+  it('rejects a body that is not {"done": boolean}', async () => {
+    expect((await putDone(...putRequest('1', undefined))).status).toBe(400);
+    expect((await putDone(...putRequest('1', { done: 'yes' }))).status).toBe(400);
+    expect((await putDone(...putRequest('1', {}))).status).toBe(400);
+    expect((await putDone(...putRequest('1', 'done'))).status).toBe(400);
+  });
+});
+
+describe.skipIf(!hasDb)('marking a story done moves it between the two sides of the feed', () => {
+  const TITLE = '__test_feed__ done story';
+  let storyId = 0;
+
+  async function cleanup() {
+    await db()`DELETE FROM stories WHERE title = ${TITLE}`;
+  }
+
+  async function ids(qs: string): Promise<number[]> {
+    const res = await GET(request(`/api/feed?${qs}`));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { stories: Array<{ id: number }> };
+    return body.stories.map((s) => s.id);
+  }
+
+  it('starts on the to-read side, leaves it when done, and comes back on undo', async () => {
+    await cleanup();
+    const [row] = await db()`
+      INSERT INTO stories (lane, title, summary_short, score)
+      VALUES ('ai', ${TITLE}, 'to be read', 5) RETURNING id::int AS id`;
+    storyId = Number(row.id);
+    try {
+      // Freshly written, so it sorts first on either side at score 5.
+      expect(await ids('lanes=ai&minScore=5&limit=5')).toContain(storyId);
+      expect(await ids('lanes=ai&minScore=5&limit=5&done=1')).not.toContain(storyId);
+
+      const done = await putDone(...putRequest(String(storyId), { done: true }));
+      expect(done.status).toBe(200);
+      const doneBody = (await done.json()) as { id: number; doneAt: string | null };
+      expect(doneBody.id).toBe(storyId);
+      expect(doneBody.doneAt).toBeTruthy();
+
+      expect(await ids('lanes=ai&minScore=5&limit=5')).not.toContain(storyId);
+      expect(await ids('lanes=ai&minScore=5&limit=5&done=1')).toContain(storyId);
+
+      // Marking it done again is a no-op that keeps the first timestamp.
+      const again = await putDone(...putRequest(String(storyId), { done: true }));
+      expect(((await again.json()) as { doneAt: string }).doneAt).toBe(doneBody.doneAt);
+
+      const undo = await putDone(...putRequest(String(storyId), { done: false }));
+      expect(undo.status).toBe(200);
+      expect(((await undo.json()) as { doneAt: string | null }).doneAt).toBeNull();
+      expect(await ids('lanes=ai&minScore=5&limit=5')).toContain(storyId);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('404s on a story that does not exist', async () => {
+    const res = await putDone(...putRequest('2147483647', { done: true }));
+    expect(res.status).toBe(404);
   });
 });

@@ -20,6 +20,7 @@ function story(over: Partial<Story> = {}): Story {
     updatedAt: new Date('2026-10-20T00:00:00Z'),
     digestedAt: null,
     verification: null,
+    doneAt: null,
     ...over,
   };
 }
