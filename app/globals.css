@@ -154,6 +154,29 @@
   .glossary-term > p {
     padding: 0 0 8px 20px;
   }
+  /* The simple definition is the summary, so it wraps as text instead of centring
+     on one line. The chevron column keeps it aligned with a plain definition. */
+  .glossary-full {
+    padding-bottom: 8px;
+  }
+  .glossary-full > summary {
+    display: flex;
+    align-items: flex-start;
+    min-height: 0;
+  }
+  .glossary-full > summary > .glossary-chevron {
+    margin-top: 3px;
+  }
+  .glossary-full > summary:hover .muted {
+    color: var(--text);
+  }
+  .glossary-full-body {
+    margin-top: 6px;
+    padding-left: 20px;
+  }
+  .glossary-full-body > p + p {
+    margin-top: 8px;
+  }
   /* Foot: the article link fills the left, the Done button sits at the right. */
   .story-foot {
     display: flex;

@@ -1,4 +1,4 @@
-// prompt version: 8
+// prompt version: 9
 //
 // Bump the number above whenever the system prompt text below changes. ADR 0003
 // calls the prompt "the product": a version marker is what lets a run logged in
@@ -11,7 +11,7 @@
 import { laneGroup, type Item, type Lane, type Story } from '../db/types';
 
 /** Mirrors the `prompt version` comment above; logged with every run so a story can be traced to its wording. */
-export const PROMPT_VERSION = 8;
+export const PROMPT_VERSION = 9;
 
 /** ADR 0003: bodies are capped so a 60-item batch has a bounded input cost. */
 export const MAX_BODY_CHARS = 2000;
@@ -44,10 +44,16 @@ export const GLOSSARY_RULES = `- "glossary": the jargon in the story's summaries
 - Use only terms that appear in summaryShort or summaryDetail, written as they
   appear there, in the order they first appear. At most 6 terms; [] when there
   is no jargon, which is normal for many stories.
-- Each "definition" is one plain sentence of at most 20 words that says what the
-  thing is or does in general, not what this story says about it. No "refers to",
-  no restating the term, no examples.
-    {"term": "Vocoder", "definition": "Turns acoustic features such as a spectrogram into an audible waveform."}`;
+- Each "definition" is the simple definition: one or two plain sentences, at most
+  35 words, that say what the thing is or does in general, not what this story
+  says about it. Start with "A <term> is ...". No "refers to", no examples. If the
+  thing maps an input to an output, end with a short form: "In short: input → output."
+- Each "full" is the full definition: 60-120 words, also in general terms, and it
+  must not repeat the simple definition. The first paragraph starts "What it does:"
+  and says how the thing works, with one concrete example. Add a second paragraph,
+  after a blank line, only when the term is commonly confused with something else:
+  it says how the two differ, starting "This differs from". Most terms have one paragraph.
+    {"term": "Vocoder", "definition": "A vocoder is a component that turns acoustic features into an audible waveform. In short: spectrogram → audio.", "full": "What it does: it fills in the fine waveform detail that a spectrogram leaves out, usually with a neural network trained on recorded speech. For example, a text-to-speech system first predicts a spectrogram for a sentence, then a vocoder turns that spectrogram into the sound you hear.\\n\\nThis differs from an audio codec, which compresses a recording and restores it. A vocoder synthesises new audio from features that never held the original waveform."}`;
 
 /**
  * The stable half of the call. Nothing per-run goes in here — lane, items and
@@ -101,7 +107,7 @@ Create a new story:
       "summaryShort": "...",
       "summaryDetail": "..." | null,   // string if score >= 3, null if score <= 2
       "score": 3,
-      "glossary": [ { "term": "...", "definition": "..." } ]   // may be []
+      "glossary": [ { "term": "...", "definition": "...", "full": "..." } ]   // may be []
     }
   }
 

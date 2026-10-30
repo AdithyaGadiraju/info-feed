@@ -631,6 +631,21 @@ export async function getStoriesWithoutGlossary(minScore: number, limit: number)
   return rows.map(toStory);
 }
 
+/** Stories with at least one term that has no full definition yet, newest first. */
+export async function getStoriesMissingFullTerms(minScore: number, limit: number): Promise<Story[]> {
+  const sql = db();
+  const rows = await sql`
+    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary,
+           first_seen_at, updated_at, digested_at
+    FROM stories
+    WHERE score >= ${minScore}
+      AND EXISTS (SELECT 1 FROM jsonb_array_elements(glossary) t WHERE t->>'full' IS NULL)
+    ORDER BY updated_at DESC, id DESC
+    LIMIT ${limit}
+  `;
+  return rows.map(toStory);
+}
+
 /** Writes backfilled glossaries. Leaves `updated_at` alone: new definitions are not news. */
 export async function setGlossaries(entries: Array<{ id: number; glossary: GlossaryTerm[] }>): Promise<number> {
   if (entries.length === 0) return 0;

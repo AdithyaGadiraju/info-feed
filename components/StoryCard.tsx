@@ -213,6 +213,28 @@ function SourceList({ items }: { items: StoryWithItems['items'] }) {
   );
 }
 
+/** The simple definition, which opens the full one when there is one. */
+function TermDefinition({ term }: { term: GlossaryTerm }) {
+  if (!term.full) return <p className="muted small">{term.definition}</p>;
+  return (
+    <details className="glossary-full">
+      <summary>
+        <span className="glossary-chevron">
+          <Icon name="chevron" size={14} />
+        </span>
+        <span className="muted small">{term.definition}</span>
+      </summary>
+      <div className="glossary-full-body">
+        {term.full.split('\n\n').map((paragraph, i) => (
+          <p key={i} className="muted small">
+            {paragraph}
+          </p>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 /**
  * Jargon from the summaries, closed by default. Native <details> all the way down,
  * so it works without JavaScript on the permalink page and several terms can be
@@ -240,7 +262,7 @@ function Glossary({ terms }: { terms: GlossaryTerm[] }) {
                 </span>
                 {t.term}
               </summary>
-              <p className="muted small">{t.definition}</p>
+              <TermDefinition term={t} />
             </details>
           </li>
         ))}

@@ -6,15 +6,20 @@
  * again, and a story the model skipped stays NULL for the next run. `--max` caps
  * the spend, as in enrich-once.
  *
+ * With `--upgrade` it picks stories that have terms without a full definition
+ * instead, and fills in only those terms. Terms that have one are left alone.
+ *
  *   npx tsx scripts/glossary-backfill.ts                 # 50 newest, score >= 3
  *   npx tsx scripts/glossary-backfill.ts --max 500 --min-score 1
+ *   npx tsx scripts/glossary-backfill.ts --upgrade --max 500 --min-score 1
  */
 import { closeDb, withDb } from '../lib/db/client';
-import { getStoriesWithoutGlossary, setGlossaries } from '../lib/db/queries';
+import { getStoriesMissingFullTerms, getStoriesWithoutGlossary, setGlossaries } from '../lib/db/queries';
 import {
   buildGlossarySystemPrompt,
   buildGlossaryUserPrompt,
   GLOSSARY_BACKFILL_JSON_SCHEMA,
+  mergeGlossary,
   parseGlossaryBackfill,
 } from '../lib/enrich/glossary';
 import { extractJsonObject } from '../lib/enrich/schema';
@@ -26,12 +31,17 @@ const DEFAULT_MAX = 50;
 const DEFAULT_MIN_SCORE = 3;
 const BATCH_SIZE = 20;
 
-function parseArgs(argv: string[]): { max: number; minScore: number } {
+function parseArgs(argv: string[]): { max: number; minScore: number; upgrade: boolean } {
   let max = DEFAULT_MAX;
   let minScore = DEFAULT_MIN_SCORE;
+  let upgrade = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
+    if (arg === '--upgrade') {
+      upgrade = true;
+      continue;
+    }
     const value = Number(argv[i + 1]);
     i += 1;
     if (arg === '--max') {
@@ -41,20 +51,23 @@ function parseArgs(argv: string[]): { max: number; minScore: number } {
       if (!Number.isInteger(value) || value < 1 || value > 5) throw new Error('--min-score needs 1-5');
       minScore = value;
     } else {
-      throw new Error(`unknown flag ${arg}. Usage: --max <n> --min-score <1-5>`);
+      throw new Error(`unknown flag ${arg}. Usage: --max <n> --min-score <1-5> --upgrade`);
     }
   }
 
-  return { max, minScore };
+  return { max, minScore, upgrade };
 }
 
 async function main(): Promise<void> {
-  const { max, minScore } = parseArgs(process.argv.slice(2));
-  const stories = await getStoriesWithoutGlossary(minScore, max);
+  const { max, minScore, upgrade } = parseArgs(process.argv.slice(2));
+  const stories = upgrade
+    ? await getStoriesMissingFullTerms(minScore, max)
+    : await getStoriesWithoutGlossary(minScore, max);
 
   console.log(
     `glossary-backfill — transport ${env.llmTransport}, model ${env.llmModel}, ` +
-      `${stories.length} story(ies) without a glossary at score >= ${minScore}`,
+      `${stories.length} story(ies) ${upgrade ? 'with terms missing a full definition' : 'without a glossary'} ` +
+      `at score >= ${minScore}`,
   );
   if (stories.length === 0) return;
 
@@ -80,7 +93,10 @@ async function main(): Promise<void> {
         costUsd += completion.costUsd ?? 0;
 
         const byId = parseGlossaryBackfill(extractJsonObject(completion.text), ids);
-        const entries = [...byId].map(([id, glossary]) => ({ id, glossary }));
+        const entries = batch.flatMap((s) => {
+          const fresh = byId.get(s.id);
+          return fresh ? [{ id: s.id, glossary: mergeGlossary(s.glossary, fresh) }] : [];
+        });
         written += await setGlossaries(entries);
         terms += entries.reduce((sum, e) => sum + e.glossary.length, 0);
         const skipped = ids.length - byId.size;

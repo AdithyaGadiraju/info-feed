@@ -83,10 +83,12 @@ npm run digest -- --since 24
 `npm run digest` runs the migration itself at startup, so `db:migrate` is only needed
 when you want to apply the schema without running a digest.
 
-Each story carries a glossary: one-line definitions of the jargon in its summaries,
-shown as a "Terms" section on the card. Enrichment writes it for new stories; stories
-from before it existed get theirs from `npm run glossary:backfill -- --max 50`
-(re-runnable, newest first, `--min-score` defaults to the feed's 3).
+Each story carries a glossary of the jargon in its summaries, shown as a "Terms"
+section on the card: click a term for its simple definition, then click that for the
+full one. Enrichment writes it for new stories; stories from before it existed get
+theirs from `npm run glossary:backfill -- --max 50` (re-runnable, newest first,
+`--min-score` defaults to the feed's 3). Add `--upgrade` to fill in full definitions
+for terms that only have a simple one.
 
 ### The database
 

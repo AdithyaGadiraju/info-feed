@@ -163,6 +163,19 @@ describe('glossary', () => {
     expect('newStory' in created && created.newStory.glossary).toEqual([]);
   });
 
+  it('keeps paragraph breaks in a full definition and drops only the field when it is bad', () => {
+    const out = sanitizeGlossary([
+      { term: 'A', definition: 'd.', full: 'What it\n does:  x.\n\n\nThis differs.' },
+      { term: 'B', definition: 'd.', full: 'x'.repeat(2000) },
+      { term: 'C', definition: 'd.', full: 7 },
+    ]);
+    expect(out).toEqual([
+      { term: 'A', definition: 'd.', full: 'What it does: x.\n\nThis differs.' },
+      { term: 'B', definition: 'd.' },
+      { term: 'C', definition: 'd.' },
+    ]);
+  });
+
   it('skips malformed and duplicate terms, collapses whitespace and caps the list', () => {
     const raw = [
       { term: '  Vocoder ', definition: 'Turns acoustic\n features into audio.' },

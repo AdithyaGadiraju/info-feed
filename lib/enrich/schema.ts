@@ -30,7 +30,8 @@ const MAX_TITLE_CHARS = 300;
 /** Caps on what the model may put in a story's glossary; extras are trimmed, not rejected. */
 export const MAX_GLOSSARY_TERMS = 8;
 const MAX_TERM_CHARS = 80;
-const MAX_DEFINITION_CHARS = 240;
+const MAX_DEFINITION_CHARS = 280;
+const MAX_FULL_CHARS = 1500;
 
 export const GLOSSARY_SCHEMA = {
   type: 'array',
@@ -39,8 +40,9 @@ export const GLOSSARY_SCHEMA = {
     properties: {
       term: { type: 'string' },
       definition: { type: 'string' },
+      full: { type: 'string' },
     },
-    required: ['term', 'definition'],
+    required: ['term', 'definition', 'full'],
     additionalProperties: false,
   },
 } as const;
@@ -290,7 +292,8 @@ export function validateEnrichResult(
  * The glossary is a reading aid, not part of the story, so a bad one never fails
  * the batch: a malformed entry is skipped, a missing glossary becomes empty, and the
  * list is trimmed to the cap. Rejecting would cost a whole retry over a definition.
- * Duplicate terms (ignoring case) keep their first definition.
+ * Duplicate terms (ignoring case) keep their first definition. A missing or
+ * oversized full definition loses only that field, so the simple one still shows.
  */
 export function sanitizeGlossary(raw: unknown): GlossaryTerm[] {
   if (!Array.isArray(raw)) return [];
@@ -305,9 +308,21 @@ export function sanitizeGlossary(raw: unknown): GlossaryTerm[] {
     const key = term.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ term, definition });
+    const full = cleanFull(entry.full);
+    out.push(full ? { term, definition, full } : { term, definition });
   }
   return out;
+}
+
+/** Whitespace is collapsed inside each paragraph; the blank lines between them stay. */
+function cleanFull(raw: unknown): string | null {
+  if (!nonEmptyString(raw)) return null;
+  const full = raw
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/\s+/g, ' ').trim())
+    .filter((paragraph) => paragraph.length > 0)
+    .join('\n\n');
+  return full.length > 0 && full.length <= MAX_FULL_CHARS ? full : null;
 }
 
 function checkDetail(

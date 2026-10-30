@@ -128,10 +128,12 @@ export interface Verification {
   checkedAt: Date;
 }
 
-/** One jargon term from a story's summaries, defined in a single line. */
+/** One jargon term from a story's summaries: a simple definition and, usually, a full one. */
 export interface GlossaryTerm {
   term: string;
   definition: string;
+  /** Blank-line separated paragraphs, shown on a click into the definition. */
+  full?: string;
 }
 
 export interface Story {

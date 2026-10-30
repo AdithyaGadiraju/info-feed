@@ -3,6 +3,7 @@ import type { Story } from '../../lib/db/types';
 import {
   buildGlossarySystemPrompt,
   buildGlossaryUserPrompt,
+  mergeGlossary,
   parseGlossaryBackfill,
 } from '../../lib/enrich/glossary';
 import { buildSystemPrompt, GLOSSARY_RULES } from '../../lib/enrich/prompt';
@@ -37,6 +38,41 @@ describe('glossary prompts', () => {
     expect(user).toContain('#7\nt: KittenTTS 2 released');
     expect(user).toContain('d: It converts text');
     expect(user).not.toMatch(/#8\n[^#]*d: /);
+  });
+
+  it('lists only the terms that still need a full definition', () => {
+    const user = buildGlossaryUserPrompt([
+      story({
+        glossary: [
+          { term: 'Vocoder', definition: 'Simple.' },
+          { term: 'LoRA', definition: 'Simple.', full: 'Full.' },
+        ],
+      }),
+    ]);
+    expect(user).toContain('g: Vocoder\n');
+    expect(buildGlossaryUserPrompt([story()])).not.toContain('g: ');
+  });
+});
+
+describe('mergeGlossary', () => {
+  const fresh = [{ term: 'vocoder', definition: 'New.', full: 'New full.' }];
+
+  it('takes the fresh glossary when the story has none', () => {
+    expect(mergeGlossary([], fresh)).toEqual(fresh);
+  });
+
+  it('never replaces a term that has a full definition', () => {
+    const mine = { term: 'Vocoder', definition: 'Mine.', full: 'Mine in full.' };
+    expect(mergeGlossary([mine], fresh)).toEqual([mine]);
+  });
+
+  it('fills a term without one, keeps its place, and ignores terms it never asked for', () => {
+    const existing = [
+      { term: 'Vocoder', definition: 'Old.' },
+      { term: 'LoRA', definition: 'Old.' },
+    ];
+    const extra = { term: 'Codec', definition: 'Extra.', full: 'Extra.' };
+    expect(mergeGlossary(existing, [...fresh, extra])).toEqual([fresh[0], existing[1]]);
   });
 });
 
