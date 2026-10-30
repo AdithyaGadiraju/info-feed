@@ -213,25 +213,28 @@ function SourceList({ items }: { items: StoryWithItems['items'] }) {
   );
 }
 
-/** The simple definition, which opens the full one when there is one. */
+/** The simple definition, always shown, and below it the full one behind a click. */
 function TermDefinition({ term }: { term: GlossaryTerm }) {
-  if (!term.full) return <p className="muted small">{term.definition}</p>;
   return (
-    <details className="glossary-full">
-      <summary>
-        <span className="glossary-chevron">
-          <Icon name="chevron" size={14} />
-        </span>
-        <span className="muted small">{term.definition}</span>
-      </summary>
-      <div className="glossary-full-body">
-        {term.full.split('\n\n').map((paragraph, i) => (
-          <p key={i} className="muted small">
-            {paragraph}
-          </p>
-        ))}
-      </div>
-    </details>
+    <div className="glossary-def">
+      <p className="muted small">
+        <span className="glossary-label">Simple:</span> {term.definition}
+      </p>
+      {term.full ? (
+        <details className="glossary-full">
+          <summary>
+            <span className="glossary-label small">Detailed…</span>
+          </summary>
+          <div className="glossary-full-body">
+            {term.full.split('\n\n').map((paragraph, i) => (
+              <p key={i} className="muted small">
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </div>
   );
 }
 

@@ -151,28 +151,24 @@
     font-weight: 600;
     color: var(--text-2);
   }
-  .glossary-term > p {
+  .glossary-def {
     padding: 0 0 8px 20px;
   }
-  /* The simple definition is the summary, so it wraps as text instead of centring
-     on one line. The chevron column keeps it aligned with a plain definition. */
-  .glossary-full {
-    padding-bottom: 8px;
+  .glossary-label {
+    font-weight: 600;
+    color: var(--text-2);
   }
+  /* The label is the whole control: no chevron, so it underlines to show it opens. */
   .glossary-full > summary {
-    display: flex;
-    align-items: flex-start;
     min-height: 0;
+    margin-top: 6px;
   }
-  .glossary-full > summary > .glossary-chevron {
-    margin-top: 3px;
-  }
-  .glossary-full > summary:hover .muted {
+  .glossary-full > summary:hover .glossary-label {
     color: var(--text);
+    text-decoration: underline;
   }
   .glossary-full-body {
-    margin-top: 6px;
-    padding-left: 20px;
+    margin-top: 4px;
   }
   .glossary-full-body > p + p {
     margin-top: 8px;
