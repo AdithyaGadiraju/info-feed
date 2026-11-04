@@ -97,7 +97,10 @@ async function main(): Promise<void> {
           const fresh = byId.get(s.id);
           return fresh ? [{ id: s.id, glossary: mergeGlossary(s.glossary, fresh) }] : [];
         });
-        written += await setGlossaries(entries);
+        // Awaited first: `written += await ...` reads `written` before the await,
+        // so batches finishing in parallel would overwrite each other's count.
+        const count = await setGlossaries(entries);
+        written += count;
         terms += entries.reduce((sum, e) => sum + e.glossary.length, 0);
         const skipped = ids.length - byId.size;
         console.log(
