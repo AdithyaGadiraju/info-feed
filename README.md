@@ -90,6 +90,19 @@ theirs from `npm run glossary:backfill -- --max 50` (re-runnable, newest first,
 `--min-score` defaults to the feed's 3). Add `--upgrade` to fill in full definitions
 for terms that only have a simple one.
 
+Below Terms, a "Products & tech" section explains the niche products and
+technologies a story names (ComfyUI, TRELLIS.2, a new model or token), with the same
+Simple and Detailed lines plus a facts line: what kind of thing it is, who makes it,
+whether it is open source or paid, and a link to its official page. Household names
+(OpenAI, Unity, Bitcoin) are skipped. Because most of these names are too new for
+the model's training data, it is written by a separate web-search pass
+(`lib/explain`), six stories per call, after `npm run digest` posts and after each
+worker enrichment, for score 3+ stories first seen in the last three days. Older
+stories get theirs from `npm run products:backfill -- --max 50` (re-runnable, newest
+first, `--days <n>` to stay recent, `--min-score` defaults to 3). It costs about
+$0.02 a story at API prices. The section is written once: a later summary rewrite
+does not redo it.
+
 ### The database
 
 One Supabase project on the Free plan, used as plain Postgres. No Supabase SDK, no RLS,

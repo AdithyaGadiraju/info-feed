@@ -136,6 +136,37 @@ export interface GlossaryTerm {
   full?: string;
 }
 
+/** How a product is available, shown in its facts line. */
+export const PRODUCT_ACCESS = ['open-source', 'open-weights', 'free', 'freemium', 'paid'] as const;
+export type ProductAccess = (typeof PRODUCT_ACCESS)[number];
+
+export const PRODUCT_ACCESS_LABELS: Record<ProductAccess, string> = {
+  'open-source': 'Open source',
+  'open-weights': 'Open weights',
+  free: 'Free',
+  freemium: 'Free tier + paid',
+  paid: 'Paid',
+};
+
+/**
+ * One niche product or technology a story names (lib/explain): what it is, in a
+ * simple and a full definition like a glossary term, plus a facts line.
+ */
+export interface ProductEntry {
+  /** As the summaries spell it. */
+  name: string;
+  /** A short noun phrase: "Open-source node-based app for AI image workflows". */
+  kind: string;
+  /** Who makes or publishes it, when known. */
+  maker: string | null;
+  access: ProductAccess | null;
+  /** Its official page or repository, only ever a URL the model saw. */
+  url: string | null;
+  definition: string;
+  /** Blank-line separated paragraphs, shown on a click into the definition. */
+  full?: string;
+}
+
 export interface Story {
   id: number;
   lane: Lane;
@@ -145,6 +176,8 @@ export interface Story {
   score: Score;
   /** Jargon from the summaries, in the order it first appears. Empty when there is none. */
   glossary: GlossaryTerm[];
+  /** Niche products and technologies the story names. Empty when none, or not written yet. */
+  products: ProductEntry[];
   firstSeenAt: Date;
   updatedAt: Date;
   digestedAt: Date | null;

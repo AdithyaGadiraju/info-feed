@@ -21,6 +21,7 @@ import { isLane, LANES, type Lane, type StoryWithLink } from '../lib/db/types';
 import { sourcesConfig } from '../config/sources';
 import { ingest } from '../lib/sources/index';
 import { enrichLane } from '../lib/enrich/run';
+import { explainNewStories } from '../lib/explain/run';
 import { digestFooter, digestHeader, digestLane, prepareLane } from '../lib/digest/run';
 import { postFooter, postHeader } from '../lib/digest/discord';
 
@@ -208,7 +209,23 @@ async function main(): Promise<void> {
   const failed = outcomes.filter((o) => o.error).map((o) => o.lane);
   await postFooter(digestFooter(quiet, failed));
 
-  const totalCost = outcomes.reduce((sum, o) => sum + o.costUsd, 0);
+  // The products & tech section for the stories this run wrote. After the posts,
+  // so its web searches never hold up Discord; the web feed shows it once written.
+  let explainCost = 0;
+  try {
+    const explained = await explainNewStories();
+    explainCost = explained.costUsd;
+    if (explained.picked > 0) {
+      console.log(
+        `  products & tech: ${explained.written} of ${explained.picked} stories, ` +
+          `${explained.entries} entries, $${explained.costUsd.toFixed(4)}`,
+      );
+    }
+  } catch (err) {
+    console.warn(`  products & tech failed: ${err instanceof Error ? err.message : err}`);
+  }
+
+  const totalCost = outcomes.reduce((sum, o) => sum + o.costUsd, 0) + explainCost;
   const totalPosted = outcomes.reduce((sum, o) => sum + o.posted, 0);
   console.log(
     `Done in ${((Date.now() - startedAt.getTime()) / 1000).toFixed(1)}s · ` +

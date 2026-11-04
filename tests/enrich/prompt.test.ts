@@ -35,6 +35,7 @@ function story(over: Partial<Story> = {}): Story {
     title: 'Nimbus 3 rollout',
     summaryShort: 'Acme Labs started rolling out Nimbus 3.',
     glossary: [],
+    products: [],
     summaryDetail: null,
     score: 4,
     firstSeenAt: new Date('2026-09-12T09:00:00Z'),

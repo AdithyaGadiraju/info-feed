@@ -17,6 +17,7 @@ import {
   type FeedCursor,
   type FeedPage,
   type GlossaryTerm,
+  type ProductEntry,
   type Item,
   type Lane,
   type NewItem,
@@ -62,6 +63,7 @@ function toStory(r: Row): Story {
     summaryDetail: (r.summary_detail as string | null) ?? null,
     score: Number(r.score) as Score,
     glossary: Array.isArray(r.glossary) ? (r.glossary as GlossaryTerm[]) : [],
+    products: Array.isArray(r.products) ? (r.products as ProductEntry[]) : [],
     firstSeenAt: r.first_seen_at as Date,
     updatedAt: r.updated_at as Date,
     digestedAt: (r.digested_at as Date | null) ?? null,
@@ -407,7 +409,7 @@ export async function getDigestStories(
 ): Promise<StoryWithLink[]> {
   const sql = db();
   const rows = await sql`
-    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary,
+    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary, products,
            first_seen_at, updated_at, digested_at, done_at,
            verdict, verdict_note, verdict_sources, verified_at,
            (SELECT i.url FROM items i WHERE i.story_id = stories.id
@@ -548,7 +550,7 @@ export async function getFeedPage(opts: {
   const patterns = searchPatterns(opts.q ?? '');
 
   const rows = await sql`
-    SELECT s.id::int AS id, s.lane, s.title, s.summary_short, s.summary_detail, s.score, s.glossary,
+    SELECT s.id::int AS id, s.lane, s.title, s.summary_short, s.summary_detail, s.score, s.glossary, s.products,
            s.first_seen_at, s.updated_at, s.digested_at, s.done_at,
            s.verdict, s.verdict_note, s.verdict_sources, s.verified_at,
            cnt.item_count, cnt.primary_url
@@ -660,11 +662,51 @@ export async function setGlossaries(entries: Array<{ id: number; glossary: Gloss
   return written;
 }
 
+// ---- products & tech ----
+
+/**
+ * Stories whose products section was never written (NULL, not an empty array),
+ * newest first, with their glossary so the explainer does not repeat a Term.
+ * `since` limits it to stories first seen after that time: the worker passes one
+ * so it only explains new stories, and leaves the old ones to the backfill.
+ */
+export async function getStoriesWithoutProducts(
+  minScore: number,
+  limit: number,
+  since: Date | null = null,
+): Promise<Story[]> {
+  const sql = db();
+  const rows = await sql`
+    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary,
+           first_seen_at, updated_at, digested_at
+    FROM stories
+    WHERE products IS NULL AND score >= ${minScore}
+      ${since ? sql`AND first_seen_at >= ${since}` : sql``}
+    ORDER BY updated_at DESC, id DESC
+    LIMIT ${limit}
+  `;
+  return rows.map(toStory);
+}
+
+/** Writes products sections. Leaves `updated_at` alone: an explanation is not news. */
+export async function setProducts(entries: Array<{ id: number; products: ProductEntry[] }>): Promise<number> {
+  if (entries.length === 0) return 0;
+  const sql = db();
+  let written = 0;
+  await sql.begin(async (tx) => {
+    for (const e of entries) {
+      const res = await tx`UPDATE stories SET products = ${tx.json(e.products as never)} WHERE id = ${e.id}`;
+      written += res.count;
+    }
+  });
+  return written;
+}
+
 /** The expanded card and the `/story/[id]` permalink. */
 export async function getStoryWithItems(id: number): Promise<StoryWithItems | null> {
   const sql = db();
   const [row] = await sql`
-    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary,
+    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary, products,
            first_seen_at, updated_at, digested_at, done_at,
            verdict, verdict_note, verdict_sources, verified_at,
            (SELECT i.url FROM items i WHERE i.story_id = stories.id

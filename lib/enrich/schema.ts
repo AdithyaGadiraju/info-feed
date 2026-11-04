@@ -315,7 +315,7 @@ export function sanitizeGlossary(raw: unknown): GlossaryTerm[] {
 }
 
 /** Whitespace is collapsed inside each paragraph; the blank lines between them stay. */
-function cleanFull(raw: unknown): string | null {
+export function cleanFull(raw: unknown): string | null {
   if (!nonEmptyString(raw)) return null;
   const full = raw
     .split(/\n\s*\n/)

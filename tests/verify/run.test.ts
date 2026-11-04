@@ -37,6 +37,7 @@ function story(overrides: Partial<StoryWithLink> = {}): StoryWithLink {
     title: 'Xbox secures GTA 6 streaming rights',
     summaryShort: 'Microsoft reportedly bought exclusive streaming rights.',
     glossary: [],
+    products: [],
     summaryDetail: null,
     score: 4,
     firstSeenAt: UPDATED,

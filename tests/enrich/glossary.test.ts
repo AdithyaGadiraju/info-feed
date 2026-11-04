@@ -17,6 +17,7 @@ function story(over: Partial<Story> = {}): Story {
     summaryDetail: 'It converts text to audio via S3 codec tokens and a vocoder.',
     score: 4,
     glossary: [],
+    products: [],
     firstSeenAt: new Date('2026-10-20T00:00:00Z'),
     updatedAt: new Date('2026-10-20T00:00:00Z'),
     digestedAt: null,

@@ -8,7 +8,9 @@ import {
   LANE_LABELS,
   VERDICT_LABELS,
   type Engagement,
+  PRODUCT_ACCESS_LABELS,
   type GlossaryTerm,
+  type ProductEntry,
   type StoryWithCount,
   type StoryWithItems,
   type Verdict,
@@ -300,6 +302,69 @@ function Glossary({ terms }: { terms: GlossaryTerm[] }) {
   );
 }
 
+/** "ComfyUI node for low-poly remeshing · by PozzettiAndrea · Open source · github.com ↗" */
+function ProductFacts({ product }: { product: ProductEntry }) {
+  const parts: ReactNode[] = [product.kind];
+  if (product.maker) parts.push(`by ${product.maker}`);
+  if (product.access) parts.push(PRODUCT_ACCESS_LABELS[product.access]);
+  const host = product.url ? hostOf(product.url) : null;
+  if (product.url && host) {
+    parts.push(
+      <a href={product.url} target="_blank" rel="noopener noreferrer" className="product-link">
+        {host} ↗
+      </a>,
+    );
+  }
+  return (
+    <p className="product-facts subtle small">
+      {parts.map((part, i) => (
+        <span key={i}>
+          {i > 0 ? ' · ' : null}
+          {part}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/**
+ * The niche products and technologies the story names, laid out like the Terms
+ * glossary with a facts line on top. It carries the .glossary class too, so the
+ * card head's click handler skips it and it shares the Terms styling.
+ */
+function Products({ products }: { products: ProductEntry[] }) {
+  if (products.length === 0) return null;
+  return (
+    <details className="glossary products mt-3">
+      <SelectableSummary>
+        <span className="glossary-chevron">
+          <Icon name="chevron" size={14} />
+        </span>
+        <span className="eyebrow">Products &amp; tech</span>
+        <span className="count">{products.length}</span>
+      </SelectableSummary>
+      <ul className="glossary-list">
+        {products.map((p, i) => (
+          <li key={`${i}-${p.name}`}>
+            <details className="glossary-term">
+              <SelectableSummary>
+                <span className="glossary-chevron">
+                  <Icon name="chevron" size={14} />
+                </span>
+                {p.name}
+              </SelectableSummary>
+              <div className="glossary-def">
+                <ProductFacts product={p} />
+              </div>
+              <TermDefinition term={{ term: p.name, definition: p.definition, full: p.full }} />
+            </details>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 export interface StoryCardProps {
   story: StoryWithCount;
   /**
@@ -423,6 +488,7 @@ export default function StoryCard({
         <Heading className={`story-title ${headingLevel === 1 ? 'story-title-lg' : ''} mt-3`}>{story.title}</Heading>
         <p className="muted mt-2">{story.summaryShort}</p>
         <Glossary terms={story.glossary} />
+        <Products products={story.products ?? []} />
         {warn ? (
           <p className="mt-2 flex gap-2 font-semibold text-red-ink">
             <span className="mt-0.5 shrink-0">

@@ -12,6 +12,7 @@
     "digest": "tsx scripts/digest.ts",
     "enrich:once": "tsx scripts/enrich-once.ts",
     "glossary:backfill": "tsx scripts/glossary-backfill.ts",
+    "products:backfill": "tsx scripts/products-backfill.ts",
     "ingest:once": "tsx scripts/ingest-once.ts",
     "worker": "tsx worker/index.ts",
     "dev": "node scripts/next.mjs dev",

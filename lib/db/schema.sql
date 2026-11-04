@@ -116,3 +116,11 @@ ALTER TABLE stories ADD COLUMN IF NOT EXISTS glossary jsonb;
 -- of the story; merely gaining more sources does not. Writing it never touches
 -- updated_at: finishing a story is not a change to it.
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS done_at timestamptz;
+
+-- Explanations of the niche products and technologies a story names (lib/explain),
+-- a JSON array of {name, kind, maker, access, url, definition, full}. NULL means not
+-- written yet: the worker explains new stories after enrichment, and
+-- scripts/products-backfill.ts does older ones. [] means written, and the story
+-- names nothing worth explaining. Writing it never touches updated_at.
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS products jsonb;
+CREATE INDEX IF NOT EXISTS stories_products_pending_idx ON stories (updated_at DESC) WHERE products IS NULL;

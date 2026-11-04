@@ -15,6 +15,7 @@ import type { Lane } from '../lib/db/types';
 import { sourcesConfig } from '../config/sources';
 import { ingest } from '../lib/sources/index';
 import { enrichLane } from '../lib/enrich/run';
+import { explainNewStories } from '../lib/explain/run';
 import { digestFooter, digestHeader, digestLane } from '../lib/digest/run';
 import { postFooter, postHeader } from '../lib/digest/discord';
 
@@ -94,6 +95,15 @@ async function runEnrich(minPending = 1): Promise<void> {
     }
   }
   if (cost > 0) console.log(`  enrich: $${cost.toFixed(4)} of model usage`);
+
+  // The products & tech section for the stories enrichment just wrote.
+  const explained = await explainNewStories();
+  if (explained.picked > 0) {
+    console.log(
+      `  explain: ${explained.written} of ${explained.picked} stories, ${explained.entries} entries | ` +
+        `$${explained.costUsd.toFixed(4)}`,
+    );
+  }
 }
 
 async function runDigest(): Promise<void> {
