@@ -80,26 +80,27 @@
     line-height: 1.2;
     letter-spacing: var(--display-tracking);
   }
-  /* The button is only the title, but its ::after covers the whole head. */
-  .story-title > button {
-    font: inherit;
-    color: inherit;
-    letter-spacing: inherit;
-    text-align: left;
+  /* The whole head toggles on click (StoryCard's onHeadClick), but its text stays
+     selectable. The "N sources" button is the keyboard toggle; its focus ring
+     outlines the whole head, as the old title overlay did. */
+  .story-head {
+    cursor: pointer;
+  }
+  .story-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 0;
     background: none;
     border: 0;
+    color: inherit;
     cursor: pointer;
   }
-  .story-title > button::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-  }
-  .story-title > button:focus-visible {
+  .story-toggle:focus-visible {
     box-shadow: none;
+    outline: none;
   }
-  .story-title > button:focus-visible::after {
+  .story-head:has(.story-toggle:focus-visible) {
     box-shadow: inset 0 0 0 2px var(--accent);
   }
   .story-chevron {
@@ -109,8 +110,8 @@
   .story-chevron.is-open {
     transform: rotate(180deg);
   }
-  /* Glossary: nested <details> under the summary. Lifted above the title button's
-     ::after overlay so its clicks open terms instead of toggling the card. */
+  /* Glossary: nested <details> under the summary. Its clicks never reach the
+     card's toggle (onHeadClick skips .glossary). */
   .glossary {
     position: relative;
     z-index: 1;

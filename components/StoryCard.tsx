@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useId, useState } from 'react';
+import { useCallback, useId, useState, type MouseEvent, type ReactNode } from 'react';
+import { useClickOrSelect } from '@/components/clickOrSelect';
 import Markdown from 'react-markdown';
 import Icon, { type IconName } from '@/components/Icon';
 import {
@@ -222,9 +223,9 @@ function TermDefinition({ term }: { term: GlossaryTerm }) {
       </p>
       {term.full ? (
         <details className="glossary-full">
-          <summary>
+          <SelectableSummary>
             <span className="glossary-label small">Detailed…</span>
-          </summary>
+          </SelectableSummary>
           <div className="glossary-full-body">
             {term.full.split('\n\n').map((paragraph, i) => (
               <p key={i} className="muted small">
@@ -238,33 +239,58 @@ function TermDefinition({ term }: { term: GlossaryTerm }) {
   );
 }
 
+function toggleParentDetails(summary: HTMLElement) {
+  const details = summary.parentElement;
+  if (details instanceof HTMLDetailsElement) details.open = !details.open;
+}
+
+/**
+ * A <summary> whose text can be selected: a plain click opens or closes it, a
+ * drag-select or double-click does not. Without JavaScript the native toggle
+ * still works, because the handler is what cancels it.
+ */
+function SelectableSummary({ children }: { children: ReactNode }) {
+  const onClick = useClickOrSelect(toggleParentDetails);
+  return (
+    <summary
+      onClick={(e) => {
+        // Keyboard activation: let the browser toggle natively.
+        if (e.detail === 0) return;
+        onClick(e);
+      }}
+    >
+      {children}
+    </summary>
+  );
+}
+
 /**
  * Jargon from the summaries, closed by default. Native <details> all the way down,
  * so it works without JavaScript on the permalink page and several terms can be
- * open at once. It sits above the title button's overlay (see .glossary), so
- * opening it never toggles the card.
+ * open at once. The card head's click handler skips anything inside .glossary,
+ * so opening it never toggles the card.
  */
 function Glossary({ terms }: { terms: GlossaryTerm[] }) {
   if (terms.length === 0) return null;
   return (
     <details className="glossary mt-3">
-      <summary>
+      <SelectableSummary>
         <span className="glossary-chevron">
           <Icon name="chevron" size={14} />
         </span>
         <span className="eyebrow">Terms</span>
         <span className="count">{terms.length}</span>
-      </summary>
+      </SelectableSummary>
       <ul className="glossary-list">
         {terms.map((t, i) => (
           <li key={`${i}-${t.term}`}>
             <details className="glossary-term">
-              <summary>
+              <SelectableSummary>
                 <span className="glossary-chevron">
                   <Icon name="chevron" size={14} />
                 </span>
                 {t.term}
-              </summary>
+              </SelectableSummary>
               <TermDefinition term={t} />
             </details>
           </li>
@@ -360,6 +386,16 @@ export default function StoryCard({
       .finally(() => setLoading(false));
   }, [expanded, detail, loading, story]);
 
+  const toggleOnClick = useClickOrSelect(toggle);
+  const onHeadClick = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      // The Terms glossary and any link handle their own clicks.
+      if ((e.target as Element).closest('a, .glossary')) return;
+      toggleOnClick(e);
+    },
+    [toggleOnClick],
+  );
+
   const sourceCount = detail ? detail.items.length : story.itemCount;
   const verification = story.verification;
   const outdated = isOutdated(story);
@@ -371,9 +407,10 @@ export default function StoryCard({
 
   return (
     <article className="panel overflow-hidden">
-      {/* The title is the toggle button; its ::after stretches over the whole head,
-          so the summary is clickable too while the heading stays a real heading. */}
-      <div className="story-head">
+      {/* A plain click anywhere on the head toggles the card; a drag-select or
+          double-click selects text instead (useClickOrSelect). The real button for
+          keyboard and screen readers is the sources row at the bottom of the head. */}
+      <div className="story-head" onClick={onHeadClick}>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="eyebrow">{LANE_LABELS[story.lane]}</span>
           <ScorePips score={story.score} />
@@ -383,11 +420,7 @@ export default function StoryCard({
             {relativeTime(story.updatedAt)}
           </span>
         </div>
-        <Heading className={`story-title ${headingLevel === 1 ? 'story-title-lg' : ''} mt-3`}>
-          <button type="button" onClick={toggle} aria-expanded={expanded} aria-controls={panelId}>
-            {story.title}
-          </button>
-        </Heading>
+        <Heading className={`story-title ${headingLevel === 1 ? 'story-title-lg' : ''} mt-3`}>{story.title}</Heading>
         <p className="muted mt-2">{story.summaryShort}</p>
         <Glossary terms={story.glossary} />
         {warn ? (
@@ -398,11 +431,19 @@ export default function StoryCard({
             {verification.note}
           </p>
         ) : null}
-        <p className="subtle small mt-3 flex items-center gap-1.5">
-          {sourceCount} {sourceCount === 1 ? 'source' : 'sources'}
-          <span className={`story-chevron ${expanded ? 'is-open' : ''}`}>
-            <Icon name="chevron" size={14} />
-          </span>
+        <p className="mt-3">
+          <button
+            type="button"
+            className="story-toggle subtle small"
+            aria-expanded={expanded}
+            aria-controls={panelId}
+          >
+            {sourceCount} {sourceCount === 1 ? 'source' : 'sources'}
+            <span className="visually-hidden">: {story.title}</span>
+            <span className={`story-chevron ${expanded ? 'is-open' : ''}`}>
+              <Icon name="chevron" size={14} />
+            </span>
+          </button>
         </p>
       </div>
 
