@@ -307,19 +307,28 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
       SELECT 'ai', '__test_queries__ tie ' || g, 'tied', 5
       FROM generate_series(1, 5) g`;
 
+    // This runs against the live database, so the expected total is whatever the
+    // feed's own filters match right now: the default (not done) view, so a story
+    // the user has marked done is excluded here exactly as getFeedPage excludes it.
+    const [{ n }] = await sql`
+      SELECT count(*)::int AS n FROM stories
+      WHERE lane = 'ai' AND score >= 5 AND done_at IS NULL`;
+    const expected = Number(n);
+
     const seen: number[] = [];
     let cursor = null as Awaited<ReturnType<typeof getFeedPage>>['nextCursor'];
-    for (let page = 0; page < 12; page += 1) {
+    // Bounded only as a guard against a cursor that never advances; the bound
+    // scales with the data instead of assuming how many rows exist.
+    for (let page = 0; page <= expected; page += 1) {
       const res = await getFeedPage({ lanes: ['ai'], minScore: 5, limit: 2, cursor });
       seen.push(...res.stories.map((st) => st.id));
       cursor = res.nextCursor;
       if (!cursor) break;
     }
 
-    const [{ n }] = await sql`
-      SELECT count(*)::int AS n FROM stories WHERE lane = 'ai' AND score >= 5`;
+    expect(cursor).toBeNull();
     expect(new Set(seen).size).toBe(seen.length);
-    expect(seen.length).toBe(Number(n));
+    expect(seen.length).toBe(expected);
   });
 
   it('marks a story done idempotently and clears it only on a material update', async () => {

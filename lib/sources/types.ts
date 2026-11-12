@@ -68,10 +68,16 @@ export interface DocsWatchSpec {
   /** Stored as the item's author; the runner seeds each name once. */
   name: string;
   url: string;
-  /** `llms` reads `- [Title](url): description` lines; `sitemap` reads `<loc>` URLs. */
-  format: 'llms' | 'sitemap';
+  /**
+   * `llms` reads `- [Title](url): description` lines; `sitemap` reads `<loc>` URLs;
+   * `html` reads same-site `<a href>` links off an index page, for a section whose
+   * posts share a path with other content and so cannot be told apart in a sitemap.
+   */
+  format: 'llms' | 'sitemap' | 'html';
   /** URL path prefixes to keep, e.g. `/docs/en/build-with-claude/`. */
   prefixes: string[];
+  /** URL path prefixes to drop even when they match `prefixes`, e.g. nav links. */
+  excludePrefixes?: string[];
 }
 
 export interface SubredditSpec {

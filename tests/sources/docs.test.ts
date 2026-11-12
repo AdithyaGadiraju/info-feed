@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { docs, matchesPrefix, parseLlmsTxt, parseSitemap } from '../../lib/sources/docs';
+import { docs, matchesPrefix, parseHtmlLinks, parseLlmsTxt, parseSitemap } from '../../lib/sources/docs';
 import { sourcesConfig } from '../../config/sources';
 
 describe('parseLlmsTxt', () => {
@@ -30,6 +30,19 @@ describe('parseSitemap', () => {
       { url: 'https://developers.openai.com/blog/run-long-horizon-tasks-with-codex', title: 'Run long horizon tasks with codex' },
       { url: 'https://cursor.com/blog/improved-token-efficiency/', title: 'Improved token efficiency' },
       { url: 'https://fal.ai/models/meshy/v7.1/image-to-3d', title: 'Meshy v7.1 image to 3d' },
+    ]);
+  });
+});
+
+describe('parseHtmlLinks', () => {
+  it('reads same-site links, titles them from link text and merges duplicates', () => {
+    const html = `<a href="/research/managed-agents"><img src="x.png"></a>
+      <h3><a class="t" href="/research/managed-agents">Scaling Managed Agents: <em>brain</em> &amp; hands</a></h3>
+      <a href="https://www.anthropic.com/research/advanced-tool-use?ref=x#top">Advanced tool use</a>
+      <a href="https://example.com/research/elsewhere">Off site</a>`;
+    expect(parseHtmlLinks(html, 'https://www.anthropic.com/engineering')).toEqual([
+      { url: 'https://www.anthropic.com/research/managed-agents', title: 'Scaling Managed Agents: brain & hands' },
+      { url: 'https://www.anthropic.com/research/advanced-tool-use', title: 'Advanced tool use' },
     ]);
   });
 });

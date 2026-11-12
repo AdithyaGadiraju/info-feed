@@ -3,12 +3,9 @@
  * `RETTIWT_API_KEY` unset, and the rest of the feed must work without this file
  * doing anything at all.
  *
- * The ADR's implementation surface says "rettiwt-api v7", but the version actually
- * installed (see package.json) is v4.2.0. Its API differs from what v7 would offer:
- * there is no dedicated "list timeline" call on `ListService` -- the list timeline
- * lives on `TweetService.list(listId, count, cursor)` instead, and search takes a
- * `TweetFilter` object (with `minLikes`) rather than a raw query string. This file
- * is written against the v4.2.0 surface actually present in node_modules.
+ * Written against `rettiwt-api` v7 (as the ADR specifies): the list timeline is
+ * `ListService.tweets(listId, count, cursor)` and search takes a plain
+ * `ITweetFilter` object (`includePhrase`, `minLikes`) on `TweetService.search`.
  */
 import type { RawItem, Source, SourceCtx, TwitterListSpec, TwitterQuerySpec } from './types';
 import { env } from '../env';
@@ -27,8 +24,8 @@ interface RettiwtTweetLike {
   id: string;
   fullText: string;
   createdAt: string;
-  likeCount: number;
-  replyCount: number;
+  likeCount?: number;
+  replyCount?: number;
   tweetBy: { userName: string };
 }
 
@@ -65,7 +62,7 @@ async function fetchLists(
     if (budget.remaining <= 0) break;
     budget.remaining -= 1;
     try {
-      const page = await rettiwt.tweet.list(spec.listId, LIST_COUNT);
+      const page = await rettiwt.list.tweets(spec.listId, LIST_COUNT);
       for (const tweet of page.list as unknown as RettiwtTweetLike[]) {
         const publishedAt = new Date(tweet.createdAt);
         if (publishedAt < ctx.since) continue;
@@ -90,11 +87,10 @@ async function fetchQueries(
     if (budget.remaining <= 0) break;
     budget.remaining -= 1;
     try {
-      const filter = new (await import('rettiwt-core')).TweetFilter({
-        includePhrase: spec.query,
-        minLikes: spec.minFaves,
-      });
-      const page = await rettiwt.tweet.search(filter, SEARCH_COUNT);
+      const page = await rettiwt.tweet.search(
+        { includePhrase: spec.query, minLikes: spec.minFaves },
+        SEARCH_COUNT,
+      );
       for (const tweet of page.list as unknown as RettiwtTweetLike[]) {
         const publishedAt = new Date(tweet.createdAt);
         if (publishedAt < ctx.since) continue;

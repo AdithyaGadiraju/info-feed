@@ -59,6 +59,45 @@ export function parseSitemap(xml: string): DocsPage[] {
   return pages;
 }
 
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * Same-site `<a href>` links on an index page, resolved against `baseUrl`, titled by
+ * their link text (or the slug when a link wraps only an image). Query and hash are
+ * dropped so a card's image link and title link collapse into one page.
+ */
+export function parseHtmlLinks(html: string, baseUrl: string): DocsPage[] {
+  const base = new URL(baseUrl);
+  const byUrl = new Map<string, DocsPage>();
+  for (const m of html.matchAll(/<a\b[^>]*?\shref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    let url: URL;
+    try {
+      url = new URL(decodeEntities(m[1]), base);
+    } catch {
+      continue;
+    }
+    if (url.host !== base.host || !/^https?:$/.test(url.protocol)) continue;
+    url.search = '';
+    url.hash = '';
+    const href = url.toString();
+    const text = decodeEntities(m[2].replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+    const existing = byUrl.get(href);
+    if (!existing) byUrl.set(href, { url: href, title: text || titleFromSlug(href) });
+    else if (text && existing.title === titleFromSlug(href)) existing.title = text;
+  }
+  return [...byUrl.values()];
+}
+
 export function matchesPrefix(url: string, prefixes: string[]): boolean {
   try {
     const path = new URL(url).pathname;
@@ -75,12 +114,19 @@ async function fetchWatch(spec: DocsWatchSpec, ctx: SourceCtx, now: Date): Promi
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const text = await res.text();
-  const pages = spec.format === 'llms' ? parseLlmsTxt(text) : parseSitemap(text);
+  const pages =
+    spec.format === 'llms'
+      ? parseLlmsTxt(text)
+      : spec.format === 'html'
+        ? parseHtmlLinks(text, res.url || spec.url)
+        : parseSitemap(text);
+  const exclude = spec.excludePrefixes ?? [];
 
   const seen = new Set<string>();
   const items: RawItem[] = [];
   for (const page of pages) {
     if (!matchesPrefix(page.url, spec.prefixes) || seen.has(page.url)) continue;
+    if (exclude.length > 0 && matchesPrefix(page.url, exclude)) continue;
     seen.add(page.url);
     items.push({
       source: 'docs',

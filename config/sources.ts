@@ -213,7 +213,12 @@ export const sourcesConfig: SourcesConfig = {
   docs: [
     { lane: 'ai_dev', name: 'Claude Platform docs', url: 'https://platform.claude.com/llms.txt', format: 'llms', prefixes: ['/docs/en/build-with-claude/', '/docs/en/about-claude/'] },
     { lane: 'ai_dev', name: 'Claude Code docs', url: 'https://code.claude.com/docs/llms.txt', format: 'llms', prefixes: ['/docs/en/'] },
-    { lane: 'ai_dev', name: 'Anthropic Engineering', url: 'https://www.anthropic.com/sitemap.xml', format: 'sitemap', prefixes: ['/engineering/'] },
+    // In Nov 2026 anthropic.com moved engineering posts from /engineering/<slug> to
+    // /research/<slug> (308), next to the research papers, so the sitemap can no
+    // longer tell them apart. The /engineering index page still lists only them.
+    // Renamed from 'Anthropic Engineering' so the relocated back catalog is seeded
+    // silently instead of resurfacing as ~25 new items (see snapshot in lib/sources/index.ts).
+    { lane: 'ai_dev', name: 'Anthropic Engineering blog', url: 'https://www.anthropic.com/engineering', format: 'html', prefixes: ['/research/'], excludePrefixes: ['/research/team/'] },
     { lane: 'ai_dev', name: 'OpenAI developer docs', url: 'https://developers.openai.com/sitemap-0.xml', format: 'sitemap', prefixes: ['/blog/', '/cookbook/examples/', '/api/docs/guides/'] },
     // Cursor's blog feed stopped in 2024; its sitemap still lists every post.
     { lane: 'ai_dev', name: 'Cursor blog', url: 'https://cursor.com/sitemap.xml', format: 'sitemap', prefixes: ['/blog/'] },
