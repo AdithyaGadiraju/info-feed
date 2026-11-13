@@ -24,6 +24,7 @@ const baseConfig: SourcesConfig = {
   github: [],
   twitterLists: [{ lane: 'ai', listId: '123' }],
   twitterQueries: [{ lane: 'ai', query: 'agi', minFaves: 50 }],
+  twitterUsers: [],
   sourceTimeoutMs: 20_000,
   bodyTimeoutMs: 8_000,
 };

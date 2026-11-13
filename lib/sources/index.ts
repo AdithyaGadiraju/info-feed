@@ -19,7 +19,8 @@ import reddit from './reddit';
 import rss from './rss';
 import steam from './steam';
 import twitter from './twitter';
-import type { Lane, RawItem, Source, SourcesConfig, Thresholds } from './types';
+import type { Lane, RawItem, Source, SourcesConfig, Thresholds, TwitterUserSpec } from './types';
+import { followedAccount } from './followed';
 
 /**
  * Fetch order is irrelevant (they run concurrently); this is reporting order. It is
@@ -113,6 +114,7 @@ export function shouldExclude(
   sourceName: Source['name'],
   item: RawItem,
   thresholds: Thresholds,
+  followedUsers: readonly TwitterUserSpec[] = [],
 ): boolean {
   const engagement = item.engagement;
 
@@ -134,6 +136,8 @@ export function shouldExclude(
       return points < (thresholds.hnMinPointsByLane?.[item.laneHint] ?? thresholds.hnMinPoints);
     }
     case 'twitter': {
+      // A followed account is the curation; its posts skip the likes bar.
+      if (followedAccount(item, followedUsers)) return false;
       const likes = engagement?.likes;
       if (typeof likes !== 'number') return false;
       return likes < thresholds.twitterMinLikes;
@@ -252,7 +256,7 @@ export async function ingest(opts: IngestOptions): Promise<IngestResult> {
       const excluded = new Set<string>();
       const toWrite: NewItem[] = fresh.map((item) => {
         const isExcluded =
-          seeding.has(item.externalId) || shouldExclude(source.name, item, config.thresholds);
+          seeding.has(item.externalId) || shouldExclude(source.name, item, config.thresholds, config.twitterUsers ?? []);
         if (isExcluded) excluded.add(item.externalId);
         return {
           source: item.source,

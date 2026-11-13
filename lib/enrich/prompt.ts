@@ -1,4 +1,4 @@
-// prompt version: 9
+// prompt version: 10
 //
 // Bump the number above whenever the system prompt text below changes. ADR 0003
 // calls the prompt "the product": a version marker is what lets a run logged in
@@ -9,9 +9,11 @@
 // prompt in particular must be byte-identical across runs or the cached prefix is
 // thrown away on every call, which is most of the cost of a small batch.
 import { laneGroup, type Item, type Lane, type Story } from '../db/types';
+import type { TwitterUserSpec } from '../sources/types';
+import { followedAccount } from '../sources/followed';
 
 /** Mirrors the `prompt version` comment above; logged with every run so a story can be traced to its wording. */
-export const PROMPT_VERSION = 9;
+export const PROMPT_VERSION = 10;
 
 /** ADR 0003: bodies are capped so a 60-item batch has a bounded input cost. */
 export const MAX_BODY_CHARS = 2000;
@@ -187,7 +189,16 @@ exception: in ai_gamedev, a developer announcing a tool, model or add-on they
 built is a release, not self-promotion; keep it when people can use the tool. Being
 a duplicate is not a reason to drop: duplicates get attached to the story they
 duplicate. Never create a placeholder story: an item you cannot summarise from its
-title and body is dropped.`;
+title and body is dropped.
+
+FOLLOWED ACCOUNTS
+An item whose header shows "followed @handle" is a post by an account the reader
+follows on purpose. The user prompt lists each such account with a note on what is
+high value from it. Still check the post: drop it when it has no takeaway (personal
+news, a joke, chat). When you keep it, follow the account's note, and never score
+the story below the floor given for that account; that floor overrides the lane's
+usual rubric. A followed post that only reacts to or quotes another post is about
+that other post: summarise the substance and say what the account added.`;
 }
 
 /**
@@ -226,10 +237,18 @@ function engagement(item: Item): string {
  * JSON: JSON of 60 items spends a meaningful share of the input budget on braces
  * and repeated key names the model does not need to see sixty times.
  */
-export function serialiseItems(items: Item[]): string {
+export function serialiseItems(items: Item[], followed: readonly TwitterUserSpec[] = []): string {
   return items
     .map((item) => {
-      const head = [`#${item.id}`, item.source, stamp(item.publishedAt), host(item.url), engagement(item)]
+      const f = followedAccount(item, followed);
+      const head = [
+        `#${item.id}`,
+        item.source,
+        f ? `followed @${f.userName}` : '',
+        stamp(item.publishedAt),
+        host(item.url),
+        engagement(item),
+      ]
         .filter((p) => p.length > 0)
         .join(' | ');
       const lines = [head, `t: ${item.title.replace(/\s+/g, ' ').trim()}`];
@@ -253,7 +272,12 @@ export function serialiseStories(stories: Story[], showLane = false): string {
     .join('\n\n');
 }
 
-export function buildUserPrompt(lane: Lane, openStories: Story[], pendingItems: Item[]): string {
+export function buildUserPrompt(
+  lane: Lane,
+  openStories: Story[],
+  pendingItems: Item[],
+  followed: readonly TwitterUserSpec[] = [],
+): string {
   const group = laneGroup(lane);
   const grouped = group.length > 1;
   const where = grouped ? `IN LANES ${group.join(', ')}` : 'IN THIS LANE';
@@ -270,8 +294,20 @@ export function buildUserPrompt(lane: Lane, openStories: Story[], pendingItems: 
 
 ${storiesBlock}
 
-NEW ITEMS (${pendingItems.length})
-${serialiseItems(pendingItems)}
+${followedBlock(pendingItems, followed)}NEW ITEMS (${pendingItems.length})
+${serialiseItems(pendingItems, followed)}
 
 Assign or drop every one of the ${pendingItems.length} item ids above, exactly once each. Return the JSON object now.`;
+}
+
+/** Notes for the followed accounts that appear in this batch; empty when none do. */
+function followedBlock(items: Item[], followed: readonly TwitterUserSpec[]): string {
+  const present = new Map<string, TwitterUserSpec>();
+  for (const item of items) {
+    const f = followedAccount(item, followed);
+    if (f) present.set(f.userName, f);
+  }
+  if (present.size === 0) return '';
+  const lines = [...present.values()].map((f) => `- @${f.userName} (floor ${f.minScore}): ${f.note}`);
+  return `FOLLOWED ACCOUNTS IN THIS BATCH\n${lines.join('\n')}\n\n`;
 }

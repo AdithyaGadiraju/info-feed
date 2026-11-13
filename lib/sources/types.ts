@@ -164,6 +164,24 @@ export interface TwitterQuerySpec {
 }
 
 /**
+ * One X account followed directly. Its own posts and quote posts are fetched
+ * (plain retweets and replies are skipped), the likes threshold is bypassed, and
+ * enrichment gets `note` as guidance. A kept story with one of its posts is never
+ * scored below `minScore`; posts with no use are still dropped.
+ */
+export interface TwitterUserSpec {
+  /** Starting lane; the model may move it within the lane group (ai/ai_dev/ai_gamedev). */
+  lane: Lane;
+  /** Handle without the @. Matched case-insensitively against item.author. */
+  userName: string;
+  /** Numeric X user id; saves a lookup request per run. */
+  userId: string;
+  /** Who this is and what counts as high value from them, for the model. */
+  note: string;
+  minScore: 3 | 4 | 5;
+}
+
+/**
  * The engagement pre-filter. This is the main cost control (ADR 0002): items below
  * these thresholds are still stored, but are marked excluded and never sent to the
  * model. Curated RSS has no threshold because the curation is the filter.
@@ -207,6 +225,7 @@ export interface SourcesConfig {
   github: GithubSearchSpec[];
   twitterLists: TwitterListSpec[];
   twitterQueries: TwitterQuerySpec[];
+  twitterUsers: TwitterUserSpec[];
   /** Per-source wall-clock budget inside the runner. */
   sourceTimeoutMs: number;
   /** Per-URL budget for article body extraction. */

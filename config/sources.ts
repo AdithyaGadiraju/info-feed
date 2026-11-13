@@ -158,6 +158,9 @@ export const sourcesConfig: SourcesConfig = {
     // Mirelo: video-to-SFX, foley and audio-to-MIDI releases, ~4 a month, all on topic.
     { lane: 'ai_gamedev', name: 'Mirelo', url: 'https://mirelo.ai/feed.xml' },
     // Model launches (V8, Edit, Thinking Mode), ~6 a month; the weekly alpha changelog is skipped.
+    // Down since ~2026-11-12 (CNAME to midjourney.ghost.io answers 402, TLS name
+    // mismatch on the custom domain). Left on so it recovers by itself: while down it
+    // costs one warning line per run. If it stays down, look for a new feed URL.
     { lane: 'ai_gamedev', name: 'Midjourney updates', url: 'https://updates.midjourney.com/rss/', exclude: /^alpha changelog/i },
     // Game-character voice and TTS models, ~2 a month after the filter.
     { lane: 'ai_gamedev', name: 'Inworld (voice)', url: 'https://inworld.ai/blog/rss.xml', include: /\bTTS\b|voice model|speech|introducing|\bgames?\b|character/i },
@@ -451,6 +454,21 @@ export const sourcesConfig: SourcesConfig = {
   // Empty until a throwaway account exists and RETTIWT_API_KEY is set (TODO T3).
   twitterLists: [],
   twitterQueries: [],
+  // Followed accounts: own posts + quote posts, no likes threshold, score floor.
+  twitterUsers: [
+    {
+      lane: 'ai_dev',
+      userName: 'karpathy',
+      userId: '33836629',
+      note:
+        'Andrej Karpathy, an agentic-coding and LLM authority. Anything that improves ' +
+        'productivity (coding-agent workflows, prompting techniques, tools he built or ' +
+        'recommends, ways of working with LLMs) is high value: score 5. Any other post ' +
+        'with real substance (AI research, evals, education, model releases): score 4. ' +
+        'Drop only personal posts, jokes and chat with no takeaway.',
+      minScore: 4,
+    },
+  ],
 
   sourceTimeoutMs: 20_000,
   bodyTimeoutMs: 8_000,

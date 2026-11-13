@@ -27,6 +27,8 @@ import {
   type TokenUsage,
 } from './transport';
 import { env } from '../env';
+import { sourcesConfig } from '../../config/sources';
+import { applyScoreFloors } from './floors';
 
 /** ADR 0003: one call per lane per run, chunked at 60 pending items. */
 export const CHUNK_SIZE = 60;
@@ -95,6 +97,19 @@ function emptyResult(): EnrichLaneResult {
   return { created: 0, updated: 0, extended: 0, dropped: 0, usage: [], costUsd: 0 };
 }
 
+/** The original user prompt plus the validator's complaints about the last answer. */
+export function retryPrompt(user: string, errors: string[]): string {
+  const shown = errors.slice(0, 10).map((e) => `- ${e}`).join('\n');
+  const more = errors.length > 10 ? `\n- ...and ${errors.length - 10} more` : '';
+  return `${user}
+
+YOUR PREVIOUS ANSWER WAS REJECTED by the validator:
+${shown}${more}
+Fix these and return the complete JSON object again. Each item id appears exactly
+once, in one assignment or in "dropped", never both; a score of 3 or more needs a
+summaryDetail string, a score of 1 or 2 needs summaryDetail null.`;
+}
+
 /**
  * One chunk: build the prompt, call, parse, validate. Retries live here rather than
  * around the write so a retry never re-applies a partially written batch.
@@ -112,13 +127,18 @@ async function enrichChunk(
   | { ok: false; error: string }
 )> {
   const system = buildSystemPrompt();
-  const user = buildUserPrompt(lane, stories, items);
+  const followed = sourcesConfig.twitterUsers ?? [];
+  const user = buildUserPrompt(lane, stories, items, followed);
   const pendingIds = items.map((i) => i.id);
   const openIds = stories.map((s) => s.id);
 
   const usage: TokenUsage[] = [];
   let costUsd = 0;
   let lastError = 'no attempt was made';
+  // A retry tells the model what the validator rejected; a blind retry of the same
+  // prompt tends to repeat the same mistake (e.g. a score-3 story with no detail).
+  // Only the user prompt changes, so the cached system prompt is still reused.
+  let attemptUser = user;
 
   // The retry wraps ONLY the model call and its validation, never the write.
   // applyAssignments is atomic, so a rollback is safe, but a throw *after* the
@@ -129,7 +149,7 @@ async function enrichChunk(
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     let validated: ReturnType<typeof validateEnrichResult>;
     try {
-      const completion = await complete(system, user);
+      const completion = await complete(system, attemptUser);
       usage.push(completion.usage);
       costUsd += completion.costUsd ?? 0;
       validated = validateEnrichResult(extractJsonObject(completion.text), pendingIds, openIds);
@@ -146,6 +166,7 @@ async function enrichChunk(
     if (!validated.ok) {
       lastError = `schema mismatch: ${validated.errors.slice(0, 5).join('; ')}`;
       console.warn(`enrich ${lane}: attempt ${attempt} rejected — ${lastError}`);
+      attemptUser = retryPrompt(user, validated.errors);
       continue;
     }
 
@@ -160,7 +181,12 @@ async function enrichChunk(
     // report the chunk as failed and leave the items pending rather than risk
     // writing the batch twice.
     try {
-      const value = validated.value;
+      const floored = applyScoreFloors(validated.value, items, followed);
+      const { raised, droppedAsNoise } = floored.report;
+      if (raised > 0 || droppedAsNoise > 0) {
+        console.info(`enrich ${lane}: followed accounts — ${raised} score(s) raised to floor, ${droppedAsNoise} item(s) dropped as noise`);
+      }
+      const value = floored.result;
       const applied = await writeWithConnectRetry(lane, () => applyAssignments(lane, value));
       return {
         ok: true,
