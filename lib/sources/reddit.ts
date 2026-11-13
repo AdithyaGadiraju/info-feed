@@ -29,6 +29,9 @@ const MAX_WAIT_MS = 60_000;
  * had closed still got a 429, while requests 30 s or more apart all succeeded. The
  * old fixed 1 s spacing made the second request of every run a 429, which is why
  * Reddit contributed almost nothing. The header only ever lengthens the 30 s floor.
+ * Re-measured 2026-11-13: unchanged (`used 1, remaining 0.0`, reset 13-44 s after each
+ * 200, and a 22-subreddit combined `.rss` still returns 100 entries), while
+ * `/hot.json` still 403s.
  */
 export function nextRequestDelayMs(remaining: string | null, reset: string | null): number {
   const left = Number(remaining);
@@ -45,8 +48,38 @@ const BODY_CAP = 2000;
 
 const parser = new Parser({ headers: { 'User-Agent': USER_AGENT } });
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * After a 429, Reddit is left alone for at least this long. Measured 2026-09-13: an
+ * address that keeps knocking stays throttled for minutes, so one 429 benches the
+ * source for the rest of a digest run, and the worker's next 30-minute ingest is
+ * the next attempt. A longer Retry-After from Reddit wins.
+ */
+const BLOCK_MS = 15 * 60_000;
+
+/**
+ * Pacing and 429 state, held per PROCESS rather than per fetch() call. `npm run
+ * digest` ingests lane by lane and calls fetch() once per lane, seconds apart, so
+ * state kept inside one call let every lane's first request go out unspaced
+ * (2026-11-13: four lanes, four 429s), and a 429 in one lane's call did not stop
+ * the next lane's call from knocking again. Same idea as the session in twitter.ts.
+ */
+const state = { nextRequestAt: 0, blockedUntil: 0 };
+let sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Test hook: clears the process-wide pacing state and optionally swaps the sleeper. */
+export function resetRedditState(opts: { sleep?: (ms: number) => Promise<void> } = {}): void {
+  state.nextRequestAt = 0;
+  state.blockedUntil = 0;
+  if (opts.sleep) sleep = opts.sleep;
+}
+
+/**
+ * How long to leave Reddit alone after a 429: Retry-After or the rate-limit reset
+ * (both seconds) when Reddit sends a longer one, never less than BLOCK_MS.
+ */
+export function blockMsAfter429(retryAfter: string | null, reset: string | null): number {
+  const hinted = Math.max(Number(retryAfter) || 0, Number(reset) || 0) * 1000;
+  return Math.max(hinted, BLOCK_MS);
 }
 
 /**
@@ -99,7 +132,10 @@ async function fetchOnce(
   url: string,
   label: string,
   ctx: SourceCtx,
-): Promise<{ res?: Response; delayMs: number }> {
+): Promise<Response | undefined> {
+  const wait = state.nextRequestAt - Date.now();
+  if (wait > 0) await sleep(wait);
+
   let res: Response;
   try {
     res = await fetch(url, {
@@ -107,17 +143,22 @@ async function fetchOnce(
       signal: AbortSignal.timeout(ctx.config.sourceTimeoutMs),
     });
   } catch (err) {
+    state.nextRequestAt = Date.now() + REQUEST_SPACING_MS;
     console.warn(`[reddit] network error fetching ${label}: ${(err as Error).message}`);
-    return { delayMs: REQUEST_SPACING_MS };
+    return undefined;
   }
 
-  const delayMs = nextRequestDelayMs(res.headers.get('x-ratelimit-remaining'), res.headers.get('x-ratelimit-reset'));
-  if (res.ok) return { res, delayMs };
-  if (res.status === 429) throw new RateLimited(`${label} returned 429`);
+  const reset = res.headers.get('x-ratelimit-reset');
+  state.nextRequestAt = Date.now() + nextRequestDelayMs(res.headers.get('x-ratelimit-remaining'), reset);
+  if (res.ok) return res;
+  if (res.status === 429) {
+    state.blockedUntil = Date.now() + blockMsAfter429(res.headers.get('retry-after'), reset);
+    throw new RateLimited(`${label} returned 429`);
+  }
 
   // 403 and everything else: degrade to partial results, keep going.
   console.warn(`[reddit] ${label} returned HTTP ${res.status}`);
-  return { delayMs };
+  return undefined;
 }
 
 /** The subreddit a post belongs to, read from its permalink, lowercased. */
@@ -149,22 +190,21 @@ export function groupBySubreddit(entries: RedditEntry[]): Map<string, RedditEntr
 async function fetchLane(
   specs: SubredditSpec[],
   ctx: SourceCtx,
-): Promise<{ items: RawItem[]; delayMs: number }> {
+): Promise<RawItem[]> {
   const label = specs.map((s) => `r/${s.sub}`).join('+');
   const url = `https://www.reddit.com/r/${specs.map((s) => s.sub).join('+')}/hot/.rss?limit=100`;
-  const { res, delayMs } = await fetchOnce(url, label, ctx);
-  if (!res) return { items: [], delayMs };
+  const res = await fetchOnce(url, label, ctx);
+  if (!res) return [];
 
   let entries: RedditEntry[];
   try {
     entries = (await parser.parseString(await res.text())).items;
   } catch (err) {
     console.warn(`[reddit] ${label} returned unparseable feed: ${(err as Error).message}`);
-    return { items: [], delayMs };
+    return [];
   }
   const groups = groupBySubreddit(entries);
-  const items = specs.flatMap((spec) => mapEntries(groups.get(spec.sub.toLowerCase()) ?? [], spec, ctx));
-  return { items, delayMs };
+  return specs.flatMap((spec) => mapEntries(groups.get(spec.sub.toLowerCase()) ?? [], spec, ctx));
 }
 
 /** One Atom entry as `rss-parser` hands it over. Only the fields this source reads. */
@@ -236,8 +276,9 @@ export const reddit: Source = {
   name: 'reddit',
   // Seven requests 30-60 s apart took 337 s on 2026-10-14, far past the shared 20 s
   // budget. A timed-out source returns nothing rather than a partial result, so the
-  // budget sits well clear of a slow run.
-  timeoutMs: 600_000,
+  // budget sits well clear of a slow run: an all-lanes call (the worker) is ~11
+  // requests at up to 60 s each.
+  timeoutMs: 900_000,
   async fetch(ctx: SourceCtx): Promise<RawItem[]> {
     const subs = ctx.lanes
       ? ctx.config.subreddits.filter((s) => ctx.lanes!.includes(s.lane))
@@ -251,23 +292,26 @@ export const reddit: Source = {
     const lanes = [...byLane.values()];
 
     const items: RawItem[] = [];
-    for (const [i, specs] of lanes.entries()) {
-      let delayMs = REQUEST_SPACING_MS;
+    for (const specs of lanes) {
+      if (Date.now() < state.blockedUntil) {
+        // Stop knocking: the address has already been told to back off, and the
+        // runner treats a short partial result as a success. The block outlives
+        // this call, so the digest's later per-lane calls skip too.
+        const skipped = specs.map((s) => `r/${s.sub}`).join('+');
+        console.warn(`[reddit] rate limited; skipping ${skipped} until ${new Date(state.blockedUntil).toLocaleTimeString()}`);
+        continue;
+      }
       try {
-        const lane = await fetchLane(specs, ctx);
-        items.push(...lane.items);
-        delayMs = lane.delayMs;
+        items.push(...(await fetchLane(specs, ctx)));
       } catch (err) {
         if (err instanceof RateLimited) {
-          // Stop the whole source here. Continuing would keep hitting an address
-          // Reddit has already told us to back off, and the runner treats a short
-          // partial result as a success, which is what we want.
-          console.warn(`[reddit] rate limited (${err.message}); skipping ${lanes.length - i - 1} more lane(s) this run`);
-          break;
+          console.warn(
+            `[reddit] rate limited (${err.message}); leaving Reddit alone until ${new Date(state.blockedUntil).toLocaleTimeString()}`,
+          );
+          continue;
         }
         console.warn(`[reddit] ${specs[0].lane} failed: ${(err as Error).message}`);
       }
-      if (i < lanes.length - 1) await sleep(delayMs);
     }
 
     return items;

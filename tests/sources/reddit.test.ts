@@ -2,22 +2,14 @@
  * Reddit source tests (ADR 0002).
  *
  * Reddit's JSON API hard-403s unauthenticated clients, so the source reads
- * `/r/<sub>/hot/.rss`. That endpoint is rate limited to roughly one request per
- * 15 s per address, and an address that has been hitting it stays throttled for
- * minutes afterwards. That makes "assert the live endpoint returned content" a
- * coin flip, and a warm-up probe is worse than useless because the probe itself
- * spends the one request the real call needed.
- *
- * So the split is: the PARSING rules are pinned deterministically against a
- * fixture through the pure `mapEntries`, and the LIVE tests assert only what must
- * hold whether or not the address is throttled -- never throwing, never exceeding
- * the rank cap, honouring the lane filter, and failing fast instead of retrying
- * into a deeper block. When the live call does return items, they are checked in
- * full.
+ * `/r/<sub>/hot/.rss`, which allows about one request per minute per address.
+ * No test touches the real endpoint: each live request would spend the budget a
+ * real digest run needs. Parsing is pinned through the pure `mapEntries`, and the
+ * fetch/pacing/429 behaviour through a stubbed global fetch.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
-import reddit, { groupBySubreddit, mapEntries, nextRequestDelayMs, type RedditEntry } from '../../lib/sources/reddit';
-import type { RawItem, SourceCtx, SourcesConfig } from '../../lib/sources/types';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import reddit, { blockMsAfter429, groupBySubreddit, resetRedditState, mapEntries, nextRequestDelayMs, type RedditEntry } from '../../lib/sources/reddit';
+import type { SourceCtx, SourcesConfig } from '../../lib/sources/types';
 
 const REDDIT_TOP_N = 10;
 
@@ -37,6 +29,7 @@ const baseConfig: SourcesConfig = {
   github: [],
   twitterLists: [],
   twitterQueries: [],
+  twitterUsers: [],
   sourceTimeoutMs: 20_000,
   bodyTimeoutMs: 8_000,
 };
@@ -47,50 +40,56 @@ function ctxFor(subreddits: SourcesConfig['subreddits'], lanes?: SourceCtx['lane
   return { since, config: { ...baseConfig, subreddits }, lanes };
 }
 
-let mlItems: RawItem[] = [];
-let reachable = false;
+const FEED = (subs: string[]) =>
+  `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">${subs
+    .map(
+      (sub, i) =>
+        `<entry><id>t3_${sub}${i}</id><title>${sub} post ${i}</title><author><name>/u/a</name></author>` +
+        `<link href="https://www.reddit.com/r/${sub}/comments/${i}/x/"/><updated>${new Date().toISOString()}</updated>` +
+        `<content type="html">body</content></entry>`,
+    )
+    .join('')}</feed>`;
 
-beforeAll(async () => {
-  mlItems = await reddit.fetch(ctxFor([{ lane: 'ai', sub: 'MachineLearning' }]));
-  reachable = mlItems.length > 0;
-  if (!reachable) {
-    console.warn(
-      '[reddit test] r/MachineLearning came back empty, most likely this address is rate-limited ' +
-        'right now (ADR 0002). Content assertions are skipped; behavioural assertions still run.',
-    );
-  }
+type Reply = { status: number; headers?: Record<string, string>; subs?: string[] };
+
+/** Stubs global fetch with queued replies and records each request URL and the sleeps before it. */
+function stubReddit(replies: Reply[]) {
+  const calls: string[] = [];
+  const sleeps: number[] = [];
+  resetRedditState({ sleep: async (ms) => void sleeps.push(ms) });
+  vi.stubGlobal('fetch', async (url: string) => {
+    calls.push(url);
+    const r = replies.shift() ?? { status: 200 };
+    return new Response(r.status === 200 ? FEED(r.subs ?? []) : 'Too Many Requests', {
+      status: r.status,
+      headers: { 'x-ratelimit-remaining': '0.0', 'x-ratelimit-reset': '40', ...r.headers },
+    });
+  });
+  return { calls, sleeps };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  resetRedditState();
 });
 
-describe('reddit source', () => {
-  it('returns well-formed items for a real subreddit', () => {
-    if (!reachable) return;
-    for (const item of mlItems) {
-      expect(item.source).toBe('reddit');
-      expect(item.laneHint).toBe('ai');
-      expect(item.title.length).toBeGreaterThan(0);
-      expect(item.url.length).toBeGreaterThan(0);
-      expect(item.externalId.length).toBeGreaterThan(0);
-      expect(Number.isNaN(item.publishedAt.getTime())).toBe(false);
-    }
-  });
-
-  it('never returns more than redditTopN items per subreddit', () => {
-    expect(mlItems.length).toBeLessThanOrEqual(REDDIT_TOP_N);
-  });
-
-  it('survives a subreddit that does not exist', async () => {
+describe('reddit source (stubbed network)', () => {
+  it('fetches one combined listing per lane and splits it back by subreddit', async () => {
+    const { calls } = stubReddit([{ status: 200, subs: ['MachineLearning', 'LocalLLaMA', 'MachineLearning'] }]);
     const items = await reddit.fetch(
       ctxFor([
-        { lane: 'ai', sub: 'thissubdoesnotexist_infofeed_xyz' },
         { lane: 'ai', sub: 'MachineLearning' },
+        { lane: 'ai', sub: 'LocalLLaMA' },
       ]),
     );
-    expect(Array.isArray(items)).toBe(true);
-    expect(items.every((i) => i.laneHint === 'ai')).toBe(true);
+    expect(calls).toEqual(['https://www.reddit.com/r/MachineLearning+LocalLLaMA/hot/.rss?limit=100']);
+    expect(items).toHaveLength(3);
+    expect(items.every((i) => i.source === 'reddit' && i.laneHint === 'ai')).toBe(true);
   });
 
   it('honours ctx.lanes', async () => {
-    const items = await reddit.fetch(
+    const { calls } = stubReddit([{ status: 200, subs: ['MachineLearning'] }]);
+    await reddit.fetch(
       ctxFor(
         [
           { lane: 'ai', sub: 'MachineLearning' },
@@ -99,22 +98,51 @@ describe('reddit source', () => {
         ['ai'],
       ),
     );
-    expect(items.every((i) => i.laneHint === 'ai')).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain('/r/MachineLearning/');
   });
 
-  it('gives up on the whole source at the first 429 instead of retrying into a deeper block', async () => {
-    // Two throttled subreddits must cost roughly one request's time, not two
-    // rounds of backoff. This is the behaviour that keeps the source inside the
-    // runner's 20s budget when the address is blocked.
-    const started = Date.now();
-    await reddit.fetch(
+  it('paces requests across separate fetch() calls, as the per-lane digest makes them', async () => {
+    const { calls, sleeps } = stubReddit([{ status: 200 }, { status: 200 }]);
+    await reddit.fetch(ctxFor([{ lane: 'ai', sub: 'MachineLearning' }]));
+    await reddit.fetch(ctxFor([{ lane: 'markets', sub: 'stocks' }]));
+    expect(calls).toHaveLength(2);
+    // The second call waits out the window the first response announced (reset 40 s).
+    expect(sleeps).toHaveLength(1);
+    expect(sleeps[0]).toBeGreaterThan(40_000);
+    expect(sleeps[0]).toBeLessThanOrEqual(41_000);
+  });
+
+  it('after a 429, skips every later lane, including those of later fetch() calls', async () => {
+    const { calls } = stubReddit([{ status: 429 }]);
+    const first = await reddit.fetch(
       ctxFor([
         { lane: 'ai', sub: 'MachineLearning' },
-        { lane: 'ai', sub: 'LocalLLaMA' },
-        { lane: 'ai', sub: 'artificial' },
+        { lane: 'gamedev', sub: 'godot' },
       ]),
     );
-    expect(Date.now() - started).toBeLessThan(20_000);
+    const later = await reddit.fetch(ctxFor([{ lane: 'games', sub: 'Games' }]));
+    expect(first).toEqual([]);
+    expect(later).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('degrades a 403 to an empty lane and carries on with the next', async () => {
+    const { calls } = stubReddit([{ status: 403 }, { status: 200, subs: ['godot'] }]);
+    const items = await reddit.fetch(
+      ctxFor([
+        { lane: 'ai', sub: 'MachineLearning' },
+        { lane: 'gamedev', sub: 'godot' },
+      ]),
+    );
+    expect(calls).toHaveLength(2);
+    expect(items.map((i) => i.laneHint)).toEqual(['gamedev']);
+  });
+
+  it('blocks for Retry-After when Reddit asks for longer than the default', () => {
+    expect(blockMsAfter429(null, null)).toBe(15 * 60_000);
+    expect(blockMsAfter429('3600', null)).toBe(3_600_000);
+    expect(blockMsAfter429('junk', '30')).toBe(15 * 60_000);
   });
 });
 
