@@ -74,8 +74,8 @@ export const sourcesConfig: SourcesConfig = {
     // ai_gamedev (AI Gamedev): AI tools and models for making games. Grouped with
     // ai and ai_dev, so the model files each story by content.
     // -- AI agents in game engines. The 3D trade press (CG Channel, fxguide) was dropped
-    // on 2026-10-14: almost none of it was about AI. The Godot items suit a Godot 4
-    // C# workflow; both repos ship release notes worth reading.
+    // on 2026-10-14: almost none of it was about AI. Both Godot repos ship release
+    // notes worth reading. Unity, Unreal, Bevy and web-engine tools are further down.
     { lane: 'ai_gamedev', name: 'GodotPrompter releases', url: 'https://github.com/jame581/GodotPrompter/releases.atom' },
     { lane: 'ai_gamedev', name: 'Godot AI (MCP) releases', url: 'https://github.com/hi-godot/godot-ai/releases.atom' },
     { lane: 'ai_gamedev', name: 'Ziva (Godot AI)', url: 'https://ziva.sh/feed.xml' },
@@ -143,6 +143,39 @@ export const sourcesConfig: SourcesConfig = {
     { lane: 'ai_gamedev', name: 'Unreal_mcp releases', url: 'https://github.com/ChiR24/Unreal_mcp/releases.atom' },
     { lane: 'ai_gamedev', name: 'robloxstudio-mcp releases', url: 'https://github.com/Chrrxs/robloxstudio-mcp/releases.atom', include: /\.0$/ },
     { lane: 'ai_gamedev', name: 'godot-mcp-pro releases', url: 'https://github.com/youichi-uda/godot-mcp-pro/releases.atom' },
+    // -- added 2026-11-15 so that engine coverage is not Godot-first: the reader is
+    // not tied to one engine. Each repo was checked live to publish releases; a
+    // ".0$" gate keeps the minor versions of the ones that ship patches every few days.
+    // Unreal. Epic's own plugin publishes no releases, so version-bump commits stand in.
+    { lane: 'ai_gamedev', name: 'Unreal skills for Claude Code (Epic)', url: 'https://github.com/EpicGames/unreal-engine-skills-for-claude-code-plugin/commits/main.atom', include: /bump (version )?to/i },
+    { lane: 'ai_gamedev', name: 'ue-mcp releases', url: 'https://github.com/db-lyon/ue-mcp/releases.atom', include: /\.0$/ },
+    // About one a month, with written release notes.
+    { lane: 'ai_gamedev', name: 'Monolith (Unreal MCP) releases', url: 'https://github.com/tumourlove/monolith/releases.atom' },
+    { lane: 'ai_gamedev', name: 'VibeUE releases', url: 'https://github.com/kevinpbuckley/VibeUE/releases.atom' },
+    // Unity.
+    { lane: 'ai_gamedev', name: 'mcp-unity (CoderGamester) releases', url: 'https://github.com/CoderGamester/mcp-unity/releases.atom' },
+    { lane: 'ai_gamedev', name: 'Unity-Skills releases', url: 'https://github.com/Besty0728/Unity-Skills/releases.atom', include: /\.0$/ },
+    // Also tags dispatcher-v* and uloop-project-runner-v* builds; keep the main line.
+    { lane: 'ai_gamedev', name: 'unity-cli-loop releases', url: 'https://github.com/hatayama/unity-cli-loop/releases.atom', include: /^v\d+\.\d+\.0$/ },
+    // Bevy, GameMaker and PlayCanvas: the one MCP server of each with real use.
+    { lane: 'ai_gamedev', name: 'bevy_brp (Bevy MCP) releases', url: 'https://github.com/natepiano/bevy_brp/releases.atom', include: /\.0$/ },
+    { lane: 'ai_gamedev', name: 'gamemaker-mcp releases', url: 'https://github.com/yearningss/gamemaker-mcp/releases.atom', include: /\.0$/ },
+    { lane: 'ai_gamedev', name: 'PlayCanvas editor MCP releases', url: 'https://github.com/playcanvas/editor-mcp-server/releases.atom', include: /\.0$/ },
+    // Cross-engine: agent skill packs for Godot, Unity and Unreal together, and
+    // Kiln, procedural 3D assets built by a coding agent (about one minor a week).
+    { lane: 'ai_gamedev', name: 'Gamedev agent skills releases', url: 'https://github.com/gamedev-skills/awesome-gamedev-agent-skills/releases.atom' },
+    { lane: 'ai_gamedev', name: 'Claude Code Game Studios releases', url: 'https://github.com/Donchitos/Claude-Code-Game-Studios/releases.atom' },
+    { lane: 'ai_gamedev', name: 'Kiln releases', url: 'https://github.com/instruktlabs/kiln/releases.atom', include: /^Kiln \d+\.\d+\.0$/ },
+    // Web engines. The three.js resources category is where AI-first engines and
+    // tools on three.js launch: 3 of 25 posts in six weeks passed the gate, all on
+    // topic. Babylon's forum: 4 of 30 in eleven days, about half on topic.
+    { lane: 'ai_gamedev', name: 'three.js forum resources (AI)', url: 'https://discourse.threejs.org/c/resources/8.rss', include: /\bMCP\b|\bAI\b|claude|codex|agent|LLM/i },
+    { lane: 'ai_gamedev', name: 'three.js forum showcase (AI)', url: 'https://discourse.threejs.org/c/showcase/7.rss', include: /\bMCP\b|\bAI\b|claude|codex|agent|LLM/i },
+    { lane: 'ai_gamedev', name: 'Babylon.js forum (AI)', url: 'https://forum.babylonjs.com/latest.rss', include: /\bMCP\b|\bAI\b|claude|codex|agent|LLM/i },
+    // Checked and left out on 2026-11-15: Unity Discussions (403 to the app), the
+    // Unreal, Defold, GDevelop, GameMaker and PlayCanvas forums (no AI titles in
+    // their latest 30-50), and r/Unity3D, r/unrealengine, r/bevy, r/gamemaker and
+    // r/threejs (3 AI titles in a combined hot 100, one of them on topic).
     // blender-mcp publishes no releases; feature commits stand in for them.
     { lane: 'ai_gamedev', name: 'blender-mcp features', url: 'https://github.com/ahujasid/blender-mcp/commits/main.atom', include: /^feat/i },
     // Local image-to-3D desktop app.
@@ -330,8 +363,10 @@ export const sourcesConfig: SourcesConfig = {
     { lane: 'ai_gamedev', query: '3D generation', allWords: true },
     { lane: 'ai_gamedev', query: 'AI 3D model', allWords: true },
     // Show HN titles: "Blender for AI Agents", "Auto-Rig Web", pixel-art sprite
-    // generators, splat browser games. About 40% on topic.
-    ...['blender', 'pixel art', 'sprite', 'rigging', '3D model', 'game assets', 'gaussian', 'roblox', 'procedural'].map((query) => ({
+    // generators, splat browser games. About 40% on topic. 'three.js' and 'game
+    // engine' (8 hits each in 90 days, 2026-11-15) carry AI-first engines and agent
+    // tools for web games; 'unity', 'unreal' and 'bevy' returned nothing.
+    ...['blender', 'pixel art', 'sprite', 'rigging', '3D model', 'game assets', 'gaussian', 'roblox', 'procedural', 'three.js', 'game engine'].map((query) => ({
       lane: 'ai_gamedev' as const,
       query,
       allWords: true,
