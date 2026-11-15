@@ -11,3 +11,8 @@ coverage/
 .claude/settings.local.json
 *.un~
 *.un
+
+# local research output and editor backups
+.env~
+reports/
+research_notes/
