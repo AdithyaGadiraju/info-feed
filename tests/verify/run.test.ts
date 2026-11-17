@@ -38,6 +38,7 @@ function story(overrides: Partial<StoryWithLink> = {}): StoryWithLink {
     summaryShort: 'Microsoft reportedly bought exclusive streaming rights.',
     glossary: [],
     products: [],
+    event: null,
     summaryDetail: null,
     score: 4,
     firstSeenAt: UPDATED,

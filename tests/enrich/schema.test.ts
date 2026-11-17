@@ -5,6 +5,7 @@ import { buildSystemPrompt, buildUserPrompt } from '../../lib/enrich/prompt';
 import {
   extractJsonObject,
   MAX_GLOSSARY_TERMS,
+  sanitizeEvent,
   sanitizeGlossary,
   validateEnrichResult,
 } from '../../lib/enrich/schema';
@@ -192,6 +193,93 @@ describe('glossary', () => {
     expect(out.map((t) => t.term)).not.toContain('Long');
     expect(out).toHaveLength(MAX_GLOSSARY_TERMS);
     expect(sanitizeGlossary('nope')).toEqual([]);
+  });
+});
+
+describe('event facts', () => {
+  const megajam = {
+    kind: 'jam',
+    starts: '2026-11-12',
+    ends: '2026-11-19',
+    deadline: '2026-11-19',
+    deadlineLabel: 'Submit by',
+    where: 'Online + San Francisco',
+    cost: 'Free',
+    prize: 'US$50k pool',
+  };
+
+  function eventsResponse(lane: string, event: unknown): Record<string, unknown> {
+    const body = validResponse();
+    const first = (body.assignments as Array<Record<string, unknown>>)[0];
+    first.newStory = { ...(first.newStory as Record<string, unknown>), lane, event };
+    return body;
+  }
+
+  it('carries the facts of a new events story through', () => {
+    const result = validate(eventsResponse('events', megajam));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [created] = result.value.assignments;
+    expect('newStory' in created && created.newStory.event).toEqual(megajam);
+  });
+
+  it('ignores an event object on a story in another lane', () => {
+    const result = validate(eventsResponse('ai', megajam));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [created] = result.value.assignments;
+    expect('newStory' in created && created.newStory.event).toBeUndefined();
+  });
+
+  it('never fails the batch over the facts: a missing object becomes null', () => {
+    const result = validate(eventsResponse('events', undefined));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [created] = result.value.assignments;
+    expect('newStory' in created && created.newStory.event).toBeNull();
+  });
+
+  it('carries an updatedEvent through and leaves a malformed one out', () => {
+    const body = validResponse();
+    const update = (body.assignments as Array<Record<string, unknown>>)[1];
+    update.updatedEvent = { ...megajam, deadline: '2026-11-21' };
+    const result = validate(body);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const second = result.value.assignments[1];
+    expect('storyId' in second && second.updatedEvent?.deadline).toBe('2026-11-21');
+
+    update.updatedEvent = 'next week';
+    const bad = validate(body);
+    expect(bad.ok).toBe(true);
+    if (!bad.ok) return;
+    const again = bad.value.assignments[1];
+    expect('storyId' in again && again.updatedEvent).toBeUndefined();
+  });
+
+  it('keeps only real calendar days, because SQL casts them', () => {
+    const facts = sanitizeEvent({ ...megajam, starts: '12 Nov 2026', ends: '2026-02-30', deadline: '2026-11-19T09:00' });
+    expect(facts).toMatchObject({ starts: null, ends: null, deadline: null, deadlineLabel: null });
+  });
+
+  it('drops an end that is not after the start, and a label with no deadline', () => {
+    expect(sanitizeEvent({ ...megajam, ends: '2026-11-12' })?.ends).toBeNull();
+    expect(sanitizeEvent({ ...megajam, ends: '2026-11-01' })?.ends).toBeNull();
+    expect(sanitizeEvent({ ...megajam, deadline: null })?.deadlineLabel).toBeNull();
+  });
+
+  it('falls back to a kind it knows, trims long text and turns blanks into null', () => {
+    const facts = sanitizeEvent({ kind: 'festival', where: '  ', cost: 'x'.repeat(200), prize: 7 });
+    expect(facts?.kind).toBe('program');
+    expect(facts?.where).toBeNull();
+    expect(facts?.cost).toHaveLength(80);
+    expect(facts?.prize).toBeNull();
+  });
+
+  it('returns null for anything that is not an object', () => {
+    expect(sanitizeEvent(null)).toBeNull();
+    expect(sanitizeEvent('jam')).toBeNull();
+    expect(sanitizeEvent([megajam])).toBeNull();
   });
 });
 

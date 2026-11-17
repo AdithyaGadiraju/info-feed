@@ -1,4 +1,4 @@
-// prompt version: 12
+// prompt version: 13
 //
 // Bump the number above whenever the system prompt text below changes. ADR 0003
 // calls the prompt "the product": a version marker is what lets a run logged in
@@ -8,12 +8,12 @@
 // Everything in this file is pure. No network, no database, no clock — the system
 // prompt in particular must be byte-identical across runs or the cached prefix is
 // thrown away on every call, which is most of the cost of a small batch.
-import { laneGroup, type Item, type Lane, type Story } from '../db/types';
+import { laneGroup, type EventFacts, type Item, type Lane, type Story } from '../db/types';
 import type { TwitterUserSpec } from '../sources/types';
 import { followedAccount } from '../sources/followed';
 
 /** Mirrors the `prompt version` comment above; logged with every run so a story can be traced to its wording. */
-export const PROMPT_VERSION = 12;
+export const PROMPT_VERSION = 13;
 
 /** ADR 0003: bodies are capped so a 60-item batch has a bounded input cost. */
 export const MAX_BODY_CHARS = 2000;
@@ -25,6 +25,8 @@ const LANE_NOTES: Record<Lane, string> = {
     "making a developer better and faster with AI coding tools. It covers how to get better results from a model or coding agent: official prompting and best-practice guides, and workflow and technique write-ups on CLAUDE.md and AGENTS.md, skills, subagents, hooks, context management, planning, verification loops and parallel agents. It covers ways to cut tokens, cost or latency. It covers plugins, skills, MCP servers and tools that raise code quality or throughput. It covers models a developer could code with: releases, availability in Claude Code, Codex, Copilot or Cursor, price and limit changes, and hands-on coding comparisons. It covers technical research on how an LLM feature behaves when that changes how to use it. AI tools for game engines and game assets go in ai_gamedev. Score by how much the story would change how the reader works this week: an official prompting or best-practices guide for a current model, a coding-capable frontier model release, or a tool or technique with evidence that it cuts tokens or raises quality is 4 or 5; a solid practitioner technique or a useful new tool is 3 or 4; routine changelog versions, minor integrations, tool launches with no evidence, community anecdotes and opinion about the future of coding are 1 or 2",
   ai_gamedev:
     "AI tools and models for making games. The reader is a solo or near-solo game developer who is not tied to one engine and wants to know about tools for all of them (Godot, Unity, Unreal, Roblox, web and custom engines) and for every art and audio tool, so never mark a story down for the engine or tool it targets. Judge fit by team size instead: a tool that one person or a very small team can get, afford and run is a full fit; one that needs a studio pipeline, an enterprise contract or a large team still gets a story, with that limit stated in the summary. It covers models and tools that generate game assets: text-to-3D and image-to-3D (Hunyuan3D, TRELLIS, Tripo, Rodin, Meshy and new open-weights models), textures and PBR materials, concept art, 2D art, sprites, pixel art and tilesets, rigging, animation, motion capture and retargeting, sound effects, music and voice, skyboxes, levels and worlds, gaussian splatting and world models. It covers Blender add-ons and MCP servers that let a model build, rig, texture or script in Blender; coding agents, MCP servers and assistants for game engines (Godot, Unity, Unreal, Roblox) and engine vendors' own AI features; runtime AI for games (NPCs, dialogue, AI-driven procedural generation) when it ships as a tool or SDK; and papers that release code or weights for any of these. The reader wants every new tool and model here, including niche ones from small teams and solo developers, so never drop or mark down a release for being obscure or new. Judge an asset tool by whether its output could go in a shipped game: an export path (GLB, FBX, OBJ, PNG sheets, WAV), clean topology, rigging, PBR maps, consistent style across sprites, a licence that allows commercial use, and evidence from real tests. Score by how much it could change how the reader makes a game: a new model or major version that beats the previous best for an asset type, or a Blender or engine integration that turns a prompt into a usable asset, is 5; any new tool, model, add-on or MCP server that produces something usable in a game, even a niche one, is 4; a paper with code or weights, a notable update to an existing tool, or a hands-on comparison or workflow write-up is 3; a showcase with no tool or method behind it, a demo nobody can use, funding with no product, and opinion about AI in games are 1 or 2. Lawsuits, layoffs, policy and platform rules about AI in games go in ai",
+  events:
+    'events and opportunities the reader could take part in, not news about them. The reader is a solo game developer in Sydney, Australia, who builds with AI tools. It covers game jams, hackathons and contests; talks, seminars, webinars, conferences and expos; and grants, dev funds, calls for speakers, closed betas and early-access programmes, when they are about game development or about AI for games, 3D, graphics or creative tools. A story belongs here only while the reader can still act: sign up, submit, apply, attend or watch live. A report on an event that is over, a list of winners, a recap of a talk, survey results from a conference, and one person writing about their own jam entry are not events and stay in the lane they came from. The reader wants top picks only, so score by three tests. Theme: AI for game development, 3D or creative tools is the theme, or AI tools are allowed and central. Access: the reader can take part online, or in person in Australia; judge a hybrid event by its online part. Weight: real prizes, or a major organiser (an engine vendor, an AI lab, a known tool vendor, a major conference or community). All three is 5. Access plus one of the other two is 4: a major game jam with prizes and no AI angle (Unity, GMTK, Ludum Dare, Global Game Jam), or a major AI-for-games conference that streams its talks. A real event that passes one test, or that the reader could only reach by travelling overseas, is 2, or 3 when its theme is AI for games. Drop small hobby jams with no prize and no known organiser, generic AI or enterprise hackathons with no game, 3D or creative angle, paid courses and sales webinars',
   markets: 'crypto and macro markets, prices, regulation, exchanges',
   betting: 'sports betting, odds, bookmakers, betting models and datasets, MMA and UFC markets',
   gamedev:
@@ -74,6 +76,7 @@ THE LANES
 - ai: ${LANE_NOTES.ai}
 - ai_dev: ${LANE_NOTES.ai_dev}
 - ai_gamedev: ${LANE_NOTES.ai_gamedev}
+- events: ${LANE_NOTES.events}
 - markets: ${LANE_NOTES.markets}
 - betting: ${LANE_NOTES.betting}
 - gamedev: ${LANE_NOTES.gamedev}
@@ -97,7 +100,8 @@ Attach items to a story that already exists:
     "updatedShort": "...",          // optional
     "updatedDetail": "..." | null,  // optional; string if updatedScore >= 3, else null
     "updatedScore": 4,              // optional
-    "updatedGlossary": [ ... ]      // optional; required with updatedShort or updatedDetail
+    "updatedGlossary": [ ... ],     // optional; required with updatedShort or updatedDetail
+    "updatedEvent": { ... }         // optional; events stories only (see EVENT FACTS)
   }
 
 Create a new story:
@@ -109,7 +113,8 @@ Create a new story:
       "summaryShort": "...",
       "summaryDetail": "..." | null,   // string if score >= 3, null if score <= 2
       "score": 3,
-      "glossary": [ { "term": "...", "definition": "...", "full": "..." } ]   // may be []
+      "glossary": [ { "term": "...", "definition": "...", "full": "..." } ],  // may be []
+      "event": { ... }                 // only when lane is "events" (see EVENT FACTS)
     }
   }
 
@@ -119,19 +124,24 @@ HARD RULES
    same "itemIds".
 2. Use only item ids from the batch below and only story ids from the open-stories
    list below. Never invent an id.
-3. "lane" on a new story is the lane named in the batch header, with one
-   exception: in an ai, ai_dev or ai_gamedev batch, choose among those three by
+3. "lane" on a new story is the lane named in the batch header, with two
+   exceptions. First, when the batch header lists events: an announcement of an
+   event the reader could take part in goes in events, whatever feed it came
+   from. Score it by the events lane's three tests, not by the rubric of the
+   lane it arrived in. Second, in an ai, ai_dev or ai_gamedev batch: for every
+   other story, choose among those three by
    what the story is about, not by where the item came from. AI tools, models and
    techniques for making games and game assets go in ai_gamedev; a story that
    helps the reader get better results from AI coding tools goes in ai_dev;
    everything else about AI goes in ai. A security incident in a coding tool, an
    acquisition or a policy fight is ai even when it arrived from a coding-tool
    feed, and a Blender MCP server is ai_gamedev even when it arrived from an AI
-   news feed. Items in these batches may also attach to an open story in any of
-   the three lanes.
+   news feed. Items in a batch may attach to any story in the open-stories
+   list, whatever its lane.
 4. Every new story must have at least one item behind it.
 5. Every "newStory" object carries all six keys every time: lane, title,
-   summaryShort, summaryDetail, score and glossary. "score" is the one most often left out
+   summaryShort, summaryDetail, score and glossary. A new story in events has a
+   seventh, event. "score" is the one most often left out
    by mistake; an assignment without it is rejected and the whole batch is retried.
 6. summaryDetail and score move together. Score 3, 4 or 5 means summaryDetail is a
    non-empty markdown string. Score 1 or 2 means summaryDetail is exactly null.
@@ -156,6 +166,11 @@ SUMMARIES
   paid app, add-on, repo), what it costs if the items say, and what it exports.
   It ends with a "**Try this:**" line naming where to try it (a Hugging Face
   space, an API page, a repo, an add-on) and one asset to test it on.
+- In an events story, the detail says what the event is and who runs it, who can
+  enter (solo or team, eligibility, region limits), the dates, the cost, the
+  prizes, the rules on AI tools when the items state them, and how to sign up.
+  It ends with a "**Do this:**" line: the one action to take, where, and the
+  date it must be done by.
 
 WRITING STYLE
 The reader wants to take in a story fast, so title, summaryShort and summaryDetail
@@ -187,6 +202,31 @@ Example of the level, for a summaryDetail paragraph:
   raw result goes into the context window, even when only a small part is useful.
   Long logs and full grep output are the usual examples."
 
+EVENT FACTS
+Every new story in the events lane carries an "event" object. No story in another
+lane has one.
+  { "kind": "jam", "starts": "YYYY-MM-DD", "ends": "YYYY-MM-DD" | null,
+    "deadline": "YYYY-MM-DD" | null, "deadlineLabel": "Submit by" | null,
+    "where": "Online + San Francisco" | null, "cost": "Free" | null,
+    "prize": "US$50k pool" | null }
+All eight keys are present every time; a value the items do not state is null.
+- "kind": one of jam, hackathon, contest, conference, talk, expo, grant, program.
+- "starts" and "ends": the first and last day, as YYYY-MM-DD. "ends" is null for
+  a one-day event.
+- "deadline": the last day the reader can act. It is the day sign-up closes when
+  sign-up closes before the event; otherwise the day submissions or applications
+  are due; null when the items state neither. "deadlineLabel" says which, in two
+  or three words: "Register by", "Submit by", "Apply by".
+- "where": "Online", a city, or both. "cost" and "prize": short, with the
+  currency ("Free", "US$299", "US$50k pool"). "prize" is null when there is none.
+- Use only what the items state. Never guess a date. When the text gives a day with no year, take the year
+  from the item's published date.
+- One event is one story. A later post about the same event (partners named,
+  sign-ups open, the theme revealed, a reminder) attaches to its open story,
+  which is listed for as long as the event has not ended. Add "updatedEvent",
+  the complete object, only when a date, place, cost or prize has changed or a
+  null field is now known. That needs no summary rewrite.
+
 GLOSSARY
 ${GLOSSARY_RULES}
 
@@ -214,8 +254,10 @@ old one.
 
 DROPPING
 Put an item in "dropped" when it is advertising, a giveaway, a meme, engagement
-bait, a job post, a self-promotion thread, or has no substance worth a story. One
-exception: in ai_gamedev, a developer announcing a tool, model or add-on they
+bait, a job post, a self-promotion thread, or has no substance worth a story. Two
+exceptions. When the batch header lists events, an announcement of an event the
+reader could enter is not advertising or a giveaway: judge it by the events lane.
+And in ai_gamedev, a developer announcing a tool, model or add-on they
 built is a release, not self-promotion; keep it when people can use the tool. Being
 a duplicate is not a reason to drop: duplicates get attached to the story they
 duplicate. Never create a placeholder story: an item you cannot summarise from its
@@ -289,6 +331,18 @@ export function serialiseItems(items: Item[], followed: readonly TwitterUserSpec
     .join('\n\n');
 }
 
+/** An events story's facts on one line, null fields left out. */
+export function serialiseEvent(e: EventFacts): string {
+  const parts: string[] = [e.kind];
+  if (e.starts) parts.push(`starts ${e.starts}`);
+  if (e.ends) parts.push(`ends ${e.ends}`);
+  if (e.deadline) parts.push(`deadline ${e.deadline}${e.deadlineLabel ? ` (${e.deadlineLabel})` : ''}`);
+  if (e.where) parts.push(`where ${e.where}`);
+  if (e.cost) parts.push(`cost ${e.cost}`);
+  if (e.prize) parts.push(`prize ${e.prize}`);
+  return parts.join(' | ');
+}
+
 /**
  * Open stories carry only what clustering needs: id, score, age, title, one-liner.
  * `showLane` adds each story's lane, for a lane group whose stories span lanes.
@@ -297,7 +351,10 @@ export function serialiseStories(stories: Story[], showLane = false): string {
   return stories
     .map((s) => {
       const head = `#${s.id}${showLane ? ` | ${s.lane}` : ''} | score ${s.score} | updated ${stamp(s.updatedAt)}`;
-      return [head, `t: ${s.title}`, `s: ${s.summaryShort.replace(/\s+/g, ' ').trim()}`].join('\n');
+      const lines = [head, `t: ${s.title}`, `s: ${s.summaryShort.replace(/\s+/g, ' ').trim()}`];
+      // The facts the model would otherwise have to restate blind in "updatedEvent".
+      if (s.event) lines.push(`e: ${serialiseEvent(s.event)}`);
+      return lines.join('\n');
     })
     .join('\n\n');
 }
@@ -313,7 +370,7 @@ export function buildUserPrompt(
   const where = grouped ? `IN LANES ${group.join(', ')}` : 'IN THIS LANE';
   const storiesBlock =
     openStories.length > 0
-      ? `OPEN STORIES ${where} (${openStories.length}, last 48h)\n${serialiseStories(openStories, grouped)}`
+      ? `OPEN STORIES ${where} (${openStories.length}, last 48h, plus events that have not ended)\n${serialiseStories(openStories, grouped)}`
       : `OPEN STORIES ${where}: none`;
   const laneLine = grouped
     ? `Lane: ${lane}. New stories go in ${group.slice(0, -1).join(', ')} or ${group.at(-1)} by content (hard rule 3).\n` +

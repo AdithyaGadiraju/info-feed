@@ -1,5 +1,5 @@
-/** The seven lanes. Order here is the digest posting order (ADR 0004). */
-export const LANES = ['ai', 'ai_dev', 'ai_gamedev', 'markets', 'betting', 'gamedev', 'games'] as const;
+/** The eight lanes. Order here is the digest posting order (ADR 0004). */
+export const LANES = ['ai', 'ai_dev', 'ai_gamedev', 'events', 'markets', 'betting', 'gamedev', 'games'] as const;
 export type Lane = (typeof LANES)[number];
 
 /**
@@ -27,6 +27,7 @@ export const LANE_LABELS: Record<Lane, string> = {
   ai: 'AI News',
   ai_dev: 'AI Dev',
   ai_gamedev: 'AI Gamedev',
+  events: 'Events',
   markets: 'Markets',
   betting: 'Betting',
   gamedev: 'Gamedev',
@@ -43,10 +44,25 @@ export const LANE_LABELS: Record<Lane, string> = {
  */
 const LANE_GROUPS: ReadonlyArray<readonly Lane[]> = [['ai', 'ai_dev', 'ai_gamedev']];
 
-/** The lanes enriched together with `lane`, `lane` first. A lane with no group returns itself. */
+/**
+ * Lanes that other lanes' batches may file into. An event to take part in (a game
+ * jam, a hackathon, a conference) is announced on the same feeds as tools and
+ * engine news, so a batch from any lane listed here sees the open events stories
+ * and may create one. Before this the Epic AI MegaJam was scored as a weak
+ * ai_gamedev story, because that lane ranks tools.
+ */
+const SHARED_LANES: Partial<Record<Lane, readonly Lane[]>> = {
+  events: ['ai', 'ai_dev', 'ai_gamedev', 'gamedev'],
+};
+
+/**
+ * The lanes enriched together with `lane`, `lane` first: its group, then any
+ * shared lane it feeds. A lane with neither returns itself.
+ */
 export function laneGroup(lane: Lane): Lane[] {
-  const group = LANE_GROUPS.find((g) => g.includes(lane));
-  return group ? [lane, ...group.filter((l) => l !== lane)] : [lane];
+  const group = LANE_GROUPS.find((g) => g.includes(lane)) ?? [lane];
+  const shared = LANES.filter((l) => SHARED_LANES[l]?.includes(lane));
+  return [lane, ...group.filter((l) => l !== lane), ...shared];
 }
 
 export function isLane(v: string): v is Lane {
@@ -167,6 +183,48 @@ export interface ProductEntry {
   full?: string;
 }
 
+/** What kind of opportunity an events-lane story is. */
+export const EVENT_KINDS = ['jam', 'hackathon', 'contest', 'conference', 'talk', 'expo', 'grant', 'program'] as const;
+export type EventKind = (typeof EVENT_KINDS)[number];
+
+export const EVENT_KIND_LABELS: Record<EventKind, string> = {
+  jam: 'Game jam',
+  hackathon: 'Hackathon',
+  contest: 'Contest',
+  conference: 'Conference',
+  talk: 'Talk',
+  expo: 'Expo',
+  grant: 'Grant',
+  program: 'Programme',
+};
+
+/**
+ * The facts line of an events-lane story. Dates are calendar days, `YYYY-MM-DD`,
+ * as the organiser states them; null when the sources do not say.
+ */
+export interface EventFacts {
+  kind: EventKind;
+  /** First day of the event. */
+  starts: string | null;
+  /** Last day of the event; null for a one-day event. */
+  ends: string | null;
+  /** The last day the reader can act: sign-up closes or submissions are due. */
+  deadline: string | null;
+  /** What the deadline is for: "Submit by", "Register by", "Apply by". */
+  deadlineLabel: string | null;
+  /** "Online", "Sydney", "Online + San Francisco". */
+  where: string | null;
+  /** "Free", "US$299", "Free online, US$1,200 in person". */
+  cost: string | null;
+  /** "US$50k pool"; null when there is no prize. */
+  prize: string | null;
+}
+
+/** The day the reminder and the "closes in" tag count down to. */
+export function eventActionDay(e: EventFacts): string | null {
+  return e.deadline ?? e.starts;
+}
+
 export interface Story {
   id: number;
   lane: Lane;
@@ -178,6 +236,8 @@ export interface Story {
   glossary: GlossaryTerm[];
   /** Niche products and technologies the story names. Empty when none, or not written yet. */
   products: ProductEntry[];
+  /** Dates, place, cost and prize. Only events-lane stories have one. */
+  event: EventFacts | null;
   firstSeenAt: Date;
   updatedAt: Date;
   digestedAt: Date | null;
@@ -262,6 +322,8 @@ export interface NewStoryInput {
   summaryDetail: string | null;
   score: Score;
   glossary: GlossaryTerm[];
+  /** Stored only when the story lands in the events lane. */
+  event?: EventFacts | null;
 }
 
 export type Assignment =
@@ -273,6 +335,8 @@ export type Assignment =
       updatedScore?: Score;
       /** Replaces the whole glossary; sent alongside a summary rewrite. */
       updatedGlossary?: GlossaryTerm[];
+      /** Replaces the facts of an events story, e.g. when a deadline moves. */
+      updatedEvent?: EventFacts;
     }
   | { itemIds: number[]; newStory: NewStoryInput };
 

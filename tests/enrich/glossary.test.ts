@@ -18,6 +18,7 @@ function story(over: Partial<Story> = {}): Story {
     score: 4,
     glossary: [],
     products: [],
+    event: null,
     firstSeenAt: new Date('2026-10-20T00:00:00Z'),
     updatedAt: new Date('2026-10-20T00:00:00Z'),
     digestedAt: null,

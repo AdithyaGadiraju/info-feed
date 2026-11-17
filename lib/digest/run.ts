@@ -3,7 +3,7 @@
  * sequencing across lanes belong to the script that calls this module; this file
  * only knows how to do one lane at a time, and writes the `runs` row for it.
  */
-import { finishRun, getDigestStories, recordDigest, startRun } from '../db/queries';
+import { finishRun, getDigestStories, recordDigest, remindUpcomingEvents, startRun } from '../db/queries';
 import type { Lane, StoryWithLink } from '../db/types';
 import { env } from '../env';
 import { verifyStories, type VerifyResult } from '../verify/run';
@@ -77,6 +77,20 @@ const DIGEST_LIMIT = 8;
  */
 const DIGEST_LIMIT_BY_LANE: Partial<Record<Lane, number>> = { ai_gamedev: 12 };
 
+/**
+ * Puts events whose deadline is near back into the selection (and at the top of
+ * the web feed). A failure here only costs the reminder, so it never stops the
+ * lane: the new announcements still go out.
+ */
+async function remindEvents(): Promise<void> {
+  try {
+    const ids = await remindUpcomingEvents();
+    if (ids.length > 0) console.log(`  events: reminder for ${ids.length} event(s) near their deadline: ${ids.join(', ')}`);
+  } catch (err) {
+    console.warn(`[digest] events reminder failed: ${errorText(err)}`);
+  }
+}
+
 export function digestLimit(lane: Lane): number {
   return DIGEST_LIMIT_BY_LANE[lane] ?? DIGEST_LIMIT;
 }
@@ -87,6 +101,7 @@ export function digestLimit(lane: Lane): number {
  * and safe to repeat.
  */
 export async function prepareLane(lane: Lane, deps: DigestLaneDeps = {}): Promise<VerifyResult> {
+  if (lane === 'events') await remindEvents();
   const stories = await getDigestStories(lane, 4, digestLimit(lane));
   if (stories.length === 0) return { stories, checked: 0, failed: 0, costUsd: 0 };
   return (deps.verifier ?? verifyStories)(lane, stories);

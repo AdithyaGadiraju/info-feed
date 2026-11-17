@@ -6,6 +6,7 @@
  */
 import { env } from '../env';
 import { LANE_LABELS, VERDICT_LABELS, type Lane, type StoryWithLink } from '../db/types';
+import { eventLine } from '../events/format';
 
 export interface DiscordEmbed {
   title: string;
@@ -91,8 +92,10 @@ function checkLine(story: StoryWithLink): string {
  * article, a clipped URL reaches nothing. The fact-check line is kept whole with
  * them, and its length is bounded where the verdict is validated.
  */
-function storyLine(story: StoryWithLink, baseUrl: string): string {
-  const tail = `${checkLine(story)}\n${storyLinks(story, baseUrl)}`;
+function storyLine(story: StoryWithLink, baseUrl: string, now: Date, tz: string): string {
+  // The facts ride with the tail, so a clipped summary never loses the deadline.
+  const facts = story.event ? `${eventLine(story.event, now, tz)}\n` : '';
+  const tail = `${facts}${checkLine(story)}\n${storyLinks(story, baseUrl)}`;
   const head = `${scoreMarker(story.score)} **${story.title}**`;
   const line = `${head}\n${story.summaryShort}\n${tail}`;
   if (line.length <= DISCORD_LIMITS.embedDescription) return line;
@@ -148,7 +151,7 @@ export function buildLaneEmbed(
   if (stories.length === 0) return [];
 
   const titleBase = `${LANE_LABELS[lane].toUpperCase()} · ${laneDateLabel(now, tz)}`;
-  const descriptions = packDescriptions(stories.map((s) => storyLine(s, baseUrl)));
+  const descriptions = packDescriptions(stories.map((s) => storyLine(s, baseUrl, now, tz)));
 
   return descriptions.map((description, i) => ({
     embeds: [

@@ -124,3 +124,11 @@ ALTER TABLE stories ADD COLUMN IF NOT EXISTS done_at timestamptz;
 -- names nothing worth explaining. Writing it never touches updated_at.
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS products jsonb;
 CREATE INDEX IF NOT EXISTS stories_products_pending_idx ON stories (updated_at DESC) WHERE products IS NULL;
+
+-- Events lane (lib/enrich). `event` is the facts line of an event the reader could
+-- take part in: {kind, starts, ends, deadline, deadlineLabel, where, cost, prize},
+-- with dates as 'YYYY-MM-DD' text. NULL on every story outside the events lane.
+-- `event_reminded_at` is when the story was put back at the top of the feed and
+-- into the digest ahead of its deadline (remindUpcomingEvents); NULL means not yet.
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS event             jsonb;
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS event_reminded_at timestamptz;

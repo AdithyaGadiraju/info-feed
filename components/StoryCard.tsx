@@ -5,9 +5,11 @@ import { useClickOrSelect } from '@/components/clickOrSelect';
 import Markdown from 'react-markdown';
 import Icon, { type IconName } from '@/components/Icon';
 import {
+  EVENT_KIND_LABELS,
   LANE_LABELS,
   VERDICT_LABELS,
   type Engagement,
+  type EventFacts,
   PRODUCT_ACCESS_LABELS,
   type GlossaryTerm,
   type ProductEntry,
@@ -16,6 +18,7 @@ import {
   type Verdict,
   type Verification,
 } from '@/lib/db/types';
+import { eventCountdown, eventDaysLeft, eventIsSoon, formatEventDeadline, formatEventWhen } from '@/lib/events/format';
 
 /**
  * JSON has no Date. Anything that arrives over `/api/feed` comes back with ISO
@@ -365,6 +368,48 @@ function Products({ products }: { products: ProductEntry[] }) {
   );
 }
 
+/**
+ * How near an event's deadline (or start) is, in the reader's own time zone. It
+ * carries its words, so the amber of "soon" is never the only signal. The server
+ * renders it in the server's zone, hence suppressHydrationWarning.
+ */
+function EventCountdown({ event }: { event: EventFacts }) {
+  const now = new Date();
+  const label = eventCountdown(event, now);
+  if (!label) return null;
+  const left = eventDaysLeft(event, now) ?? 0;
+  return (
+    <span className={`tag ${eventIsSoon(event, now) ? 'tag-amber' : ''}`} suppressHydrationWarning>
+      <Icon name={left < 0 ? 'x' : 'clock'} size={14} />
+      {label}
+    </span>
+  );
+}
+
+/** The facts of an events story: what kind, when, where, the deadline, cost and prize. */
+function EventFactsList({ event }: { event: EventFacts }) {
+  const rows: Array<[string, string | null]> = [
+    ['Type', EVENT_KIND_LABELS[event.kind]],
+    ['When', formatEventWhen(event)],
+    ['Where', event.where],
+    ['Deadline', formatEventDeadline(event)],
+    ['Cost', event.cost],
+    ['Prize', event.prize],
+  ];
+  return (
+    <dl className="event-facts mt-3">
+      {rows.map(([label, value]) =>
+        value ? (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ) : null,
+      )}
+    </dl>
+  );
+}
+
 export interface StoryCardProps {
   story: StoryWithCount;
   /**
@@ -480,6 +525,7 @@ export default function StoryCard({
           <span className="eyebrow">{LANE_LABELS[story.lane]}</span>
           <ScorePips score={story.score} />
           {verification ? <VerdictBadge verification={verification} outdated={outdated} /> : null}
+          {story.event ? <EventCountdown event={story.event} /> : null}
           {doneAt ? <DoneTag doneAt={doneAt} /> : null}
           <span className="subtle small ml-auto" suppressHydrationWarning>
             {relativeTime(story.updatedAt)}
@@ -487,6 +533,7 @@ export default function StoryCard({
         </div>
         <Heading className={`story-title ${headingLevel === 1 ? 'story-title-lg' : ''} mt-3`}>{story.title}</Heading>
         <p className="muted mt-2">{story.summaryShort}</p>
+        {story.event ? <EventFactsList event={story.event} /> : null}
         <Glossary terms={story.glossary} />
         <Products products={story.products ?? []} />
         {warn ? (

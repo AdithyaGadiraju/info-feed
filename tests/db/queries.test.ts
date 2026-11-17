@@ -5,16 +5,18 @@ import {
   applyAssignments,
   countPendingItems,
   getFeedPage,
+  getOpenStories,
   getPendingItems,
   getStoryWithItems,
   insertPriceSnapshots,
   markItemsFiltered,
+  remindUpcomingEvents,
   setStoryDone,
   upsertItems,
   finishRun,
   startRun,
 } from '../../lib/db/queries';
-import { EXCLUDED_STORY_ID, type NewItem } from '../../lib/db/types';
+import { EXCLUDED_STORY_ID, laneGroup, type EventFacts, type NewItem } from '../../lib/db/types';
 
 const TEST_SOURCE = '__test_queries__';
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -29,6 +31,37 @@ function item(externalId: string, over: Partial<NewItem> = {}): NewItem {
     publishedAt: new Date(),
     engagement: { points: 10 },
     ...over,
+  };
+}
+
+/** A calendar day `offset` days from today (UTC, as the database counts it). */
+function day(offset: number): string {
+  return new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+}
+
+function eventFacts(over: Partial<EventFacts> = {}): EventFacts {
+  return {
+    kind: 'jam',
+    starts: day(10),
+    ends: day(17),
+    deadline: day(17),
+    deadlineLabel: 'Submit by',
+    where: 'Online',
+    cost: 'Free',
+    prize: 'US$50k pool',
+    ...over,
+  };
+}
+
+function eventStory(title: string, event: EventFacts) {
+  return {
+    lane: 'events' as const,
+    title,
+    summaryShort: 'An event to take part in.',
+    summaryDetail: 'Details of the event.',
+    score: 4 as const,
+    glossary: [],
+    event,
   };
 }
 
@@ -154,6 +187,124 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
     const laneOf = Object.fromEntries(rows.map((r) => [r.title, r.lane]));
     expect(laneOf['__test_queries__ group lane']).toBe('ai_dev');
     expect(laneOf['__test_queries__ foreign lane']).toBe('ai');
+  });
+
+  it('lets a gamedev batch file an event into the events lane, with its facts', async () => {
+    const res = await upsertItems([item('ev-jam', { laneHint: 'gamedev' }), item('ev-news', { laneHint: 'gamedev' })]);
+    const [jam, news] = res.inserted.map((r) => r.id);
+    const event = eventFacts({ starts: day(10), ends: day(17), deadline: day(17) });
+
+    await applyAssignments('gamedev', {
+      assignments: [
+        { itemIds: [jam], newStory: eventStory('__test_queries__ event from gamedev', event) },
+        // Facts on a story outside the events lane are not stored.
+        { itemIds: [news], newStory: { ...eventStory('__test_queries__ not an event', event), lane: 'gamedev' } },
+      ],
+      dropped: [],
+    });
+
+    const sql = db();
+    const rows = await sql`
+      SELECT title, lane, event FROM stories
+      WHERE title IN ('__test_queries__ event from gamedev', '__test_queries__ not an event')
+    `;
+    const byTitle = Object.fromEntries(rows.map((r) => [r.title, r]));
+    expect(byTitle['__test_queries__ event from gamedev'].lane).toBe('events');
+    expect(byTitle['__test_queries__ event from gamedev'].event).toEqual(event);
+    expect(byTitle['__test_queries__ not an event'].lane).toBe('gamedev');
+    expect(byTitle['__test_queries__ not an event'].event).toBeNull();
+  });
+
+  it('files an event from a lane that does not feed events under the run lane, without facts', async () => {
+    const res = await upsertItems([item('ev-markets', { laneHint: 'markets' })]);
+    await applyAssignments('markets', {
+      assignments: [
+        { itemIds: [res.inserted[0].id], newStory: eventStory('__test_queries__ event from markets', eventFacts()) },
+      ],
+      dropped: [],
+    });
+    const sql = db();
+    const [row] = await sql`SELECT lane, event FROM stories WHERE title = '__test_queries__ event from markets'`;
+    expect(row.lane).toBe('markets');
+    expect(row.event).toBeNull();
+  });
+
+  it('keeps an events story open until its last date has passed', async () => {
+    const res = await upsertItems([item('ev-open', { laneHint: 'events' }), item('ev-over', { laneHint: 'events' })]);
+    const [open, over] = res.inserted.map((r) => r.id);
+    await applyAssignments('events', {
+      assignments: [
+        { itemIds: [open], newStory: eventStory('__test_queries__ open event', eventFacts({ starts: day(20), ends: day(22), deadline: day(5) })) },
+        { itemIds: [over], newStory: eventStory('__test_queries__ past event', eventFacts({ starts: day(-9), ends: day(-2), deadline: day(-2) })) },
+      ],
+      dropped: [],
+    });
+    const sql = db();
+    // Both were updated long ago, so only the dates can keep one open.
+    await sql`UPDATE stories SET updated_at = now() - interval '30 days' WHERE title LIKE '__test_queries__ % event'`;
+
+    const titles = (await getOpenStories(laneGroup('gamedev'), 48, 500)).map((s) => s.title);
+    expect(titles).toContain('__test_queries__ open event');
+    expect(titles).not.toContain('__test_queries__ past event');
+    const story = (await getOpenStories(['events'], 48, 500)).find((s) => s.title === '__test_queries__ open event');
+    expect(story?.event?.deadline).toBe(day(5));
+  });
+
+  // remindUpcomingEvents is not scoped to test rows: it also reminds any real
+  // events story inside its window, which is what the next digest would do anyway.
+  it('reminds once, three days before the deadline, and again after the deadline moves', async () => {
+    const res = await upsertItems([
+      item('ev-soon', { laneHint: 'events' }),
+      item('ev-far', { laneHint: 'events' }),
+      item('ev-new', { laneHint: 'events' }),
+      item('ev-move', { laneHint: 'events' }),
+    ]);
+    const [soon, far, fresh, move] = res.inserted.map((r) => r.id);
+    const facts = (deadline: string) => eventFacts({ starts: day(1), ends: null, deadline });
+    await applyAssignments('events', {
+      assignments: [
+        { itemIds: [soon], newStory: eventStory('__test_queries__ remind soon', facts(day(2))) },
+        { itemIds: [far], newStory: eventStory('__test_queries__ remind far', facts(day(9))) },
+        { itemIds: [fresh], newStory: eventStory('__test_queries__ remind new', facts(day(2))) },
+      ],
+      dropped: [],
+    });
+    const sql = db();
+    const old = sql`now() - interval '5 days'`;
+    await sql`
+      UPDATE stories SET first_seen_at = ${old}, updated_at = ${old}, done_at = now()
+      WHERE title IN ('__test_queries__ remind soon', '__test_queries__ remind far')
+    `;
+    const idOf = async (title: string) => Number((await sql`SELECT id::int AS id FROM stories WHERE title = ${title}`)[0].id);
+    const soonId = await idOf('__test_queries__ remind soon');
+    const farId = await idOf('__test_queries__ remind far');
+    const freshId = await idOf('__test_queries__ remind new');
+
+    const first = await remindUpcomingEvents();
+    expect(first).toContain(soonId);
+    // Too far away, and first seen under two days ago.
+    expect(first).not.toContain(farId);
+    expect(first).not.toContain(freshId);
+
+    const [row] = await sql`
+      SELECT done_at, event_reminded_at, (updated_at > now() - interval '1 minute') AS bumped
+      FROM stories WHERE id = ${soonId}
+    `;
+    expect(row.done_at).toBeNull();
+    expect(row.event_reminded_at).not.toBeNull();
+    expect(row.bumped).toBe(true);
+
+    expect(await remindUpcomingEvents()).not.toContain(soonId);
+
+    // The organiser extends the deadline: the story is due a reminder for the new day.
+    await applyAssignments('events', {
+      assignments: [{ itemIds: [move], storyId: soonId, updatedEvent: facts(day(3)) }],
+      dropped: [],
+    });
+    const [moved] = await sql`SELECT event, event_reminded_at FROM stories WHERE id = ${soonId}`;
+    expect((moved.event as EventFacts).deadline).toBe(day(3));
+    expect(moved.event_reminded_at).toBeNull();
+    expect(await remindUpcomingEvents()).toContain(soonId);
   });
 
   it('counts an attach-only assignment as extended, and a revision as updated', async () => {

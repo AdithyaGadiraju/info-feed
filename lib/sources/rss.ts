@@ -54,13 +54,27 @@ function parsePublishedAt(item: Parser.Item): Date {
   return new Date();
 }
 
-async function fetchFeed(feed: FeedSpec, ctx: SourceCtx): Promise<RawItem[]> {
-  const res = await fetch(feed.url, {
+async function fetchXml(url: string, ctx: SourceCtx): Promise<string> {
+  const res = await fetch(url, {
     headers: { 'User-Agent': USER_AGENT },
     signal: AbortSignal.timeout(ctx.config.sourceTimeoutMs),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const xml = await res.text();
+  return res.text();
+}
+
+/**
+ * `xmlByUrl` holds one download per URL for the run. A feed can be listed more
+ * than once, under different lanes and title gates (the events lane reads vendor
+ * feeds that ai_gamedev already reads), and each listing parses the same text.
+ */
+async function fetchFeed(feed: FeedSpec, ctx: SourceCtx, xmlByUrl: Map<string, Promise<string>>): Promise<RawItem[]> {
+  let pending = xmlByUrl.get(feed.url);
+  if (!pending) {
+    pending = fetchXml(feed.url, ctx);
+    xmlByUrl.set(feed.url, pending);
+  }
+  const xml = await pending;
 
   const parser = new Parser({
     headers: { 'User-Agent': USER_AGENT },
@@ -111,10 +125,11 @@ export const rss: Source = {
   async fetch(ctx: SourceCtx): Promise<RawItem[]> {
     const feeds = ctx.lanes ? ctx.config.feeds.filter((f) => ctx.lanes!.includes(f.lane)) : ctx.config.feeds;
 
+    const xmlByUrl = new Map<string, Promise<string>>();
     const results = await runWithConcurrency(
       feeds.map((feed) => async () => {
         try {
-          return await fetchFeed(feed, ctx);
+          return await fetchFeed(feed, ctx, xmlByUrl);
         } catch (err) {
           // A single dead/slow publisher must never take the whole source down
           // (ADR 0002) — log and move on, the run keeps whatever else succeeded.

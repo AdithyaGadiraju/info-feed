@@ -22,6 +22,7 @@ const baseConfig: SourcesConfig = {
   thresholds: { redditTopN: 50, redditMinUpvotes: 0, hnMinPoints: 0, twitterMinLikes: 0 },
   huggingface: { models: [], papers: [] },
   github: [],
+  devpost: [],
   twitterLists: [{ lane: 'ai', listId: '123' }],
   twitterQueries: [{ lane: 'ai', query: 'agi', minFaves: 50 }],
   twitterUsers: [],

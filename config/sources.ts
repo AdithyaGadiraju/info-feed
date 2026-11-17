@@ -18,6 +18,13 @@ const ASSET_POSTS = /\b3d\b|\bmesh|hunyuan|trellis|tripo|\bpbr\b|texture (gen|ma
 /** Title gate for subreddits where agent technique is a small share of posts. */
 const AGENT_TECHNIQUE = /plugin|skill|hook|subagent|mcp|token|claude\.md|agents\.md|workflow|tips?\b|context|i built|cost/i;
 
+/**
+ * Title gate for the events lane: a post that announces something to take part in.
+ * Wide on purpose ("challenge", "summit"); the model drops what is not an event.
+ * "beta" alone is left out: Roblox titles every feature "[Studio Beta]".
+ */
+const EVENT_TITLES = /\b(game ?jams?|mega ?jam|jam|hackathons?|contests?|competitions?|challenge|summit|conference|expo|webinar|workshop|meetup|grants?|fellowship|accelerator|call for (papers|speakers|submissions|entries)|sign-?ups?|registration|register now|applications? (now )?open|closed beta|early access|waitlist|GDC|GTC|SIGGRAPH|dev ?days?)\b/i;
+
 export const sourcesConfig: SourcesConfig = {
   // Both are LANES minus PAUSED_LANES (lib/db/types.ts). Pause or resume a lane
   // there, not here.
@@ -208,6 +215,35 @@ export const sourcesConfig: SourcesConfig = {
     // Neither repo publishes releases, so these read commits and keep the release ones.
     { lane: 'ai_gamedev', name: 'Roblox Cube releases', url: 'https://github.com/Roblox/cube/commits/main.atom', include: /release/i },
     { lane: 'ai_gamedev', name: 'TRELLIS.2 releases', url: 'https://github.com/microsoft/TRELLIS.2/commits/main.atom', include: /release/i },
+    // events (Events): things to take part in. Jams, hackathons and contests; talks,
+    // conferences and expos; grants and early-access programmes. Most events reach
+    // this lane from the lanes above and from gamedev: the model files an event
+    // announcement here whatever feed it came from (SHARED_LANES in lib/db/types.ts).
+    // The feeds below are the ones those lanes gate by title, read again with an
+    // event gate. A post that passes both gates keeps the first lane listed, and
+    // the model still moves it here. Verified live on 2026-11-17.
+    // -- engine and tool vendors that run jams, contests and summits
+    { lane: 'events', name: 'Unreal announcements (events)', url: 'https://forums.unrealengine.com/c/general/announcements/49.rss', include: EVENT_TITLES },
+    { lane: 'events', name: 'Roblox announcements (events)', url: 'https://devforum.roblox.com/c/updates/announcements/36.rss', include: EVENT_TITLES },
+    { lane: 'events', name: 'ComfyUI blog (events)', url: 'https://blog.comfy.org/feed', include: EVENT_TITLES },
+    { lane: 'events', name: 'ElevenLabs (events)', url: 'https://elevenlabs.io/blog/rss.xml', include: EVENT_TITLES },
+    { lane: 'events', name: 'NVIDIA Developer (events)', url: 'https://developer.nvidia.com/blog/feed', include: EVENT_TITLES },
+    // AI hackathons and contests run with hardware and lab partners, about one a month.
+    { lane: 'events', name: 'Hugging Face (events)', url: 'https://huggingface.co/blog/feed.xml', include: EVENT_TITLES },
+    // Grants and funds for indie developers show up in the trade press first.
+    { lane: 'events', name: 'GamesIndustry.biz (events)', url: 'https://www.gamesindustry.biz/feed', include: EVENT_TITLES },
+    // GMTK Game Jam: the announcement and the theme video.
+    { lane: 'events', name: "Game Maker's Toolkit (jam)", url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCqJ-Xo29CKyLTjn6z2XwYAw', include: /\bjam\b/i },
+    // SIGGRAPH and SIGGRAPH Asia: programme, registration and calls for work.
+    { lane: 'events', name: 'ACM SIGGRAPH blog', url: 'https://blog.siggraph.org/feed/', include: EVENT_TITLES },
+    // -- Australia, where in-person events count. GCAP is the Melbourne developer
+    // conference (about one post a month); IGEA is the industry body, gated because
+    // most of its posts are policy submissions.
+    { lane: 'events', name: 'GCAP (Melbourne)', url: 'https://gcap.com.au/feed/' },
+    { lane: 'events', name: 'IGEA (Australia)', url: 'https://igea.net/feed/', include: EVENT_TITLES },
+    // Checked and left out on 2026-11-17: itch.io jams (no feed; hundreds of small
+    // jams a month), Global Game Jam (403 to the app), Ludum Dare, GDC, MLH, Kaggle
+    // and lablab.ai (no feed), indiegamejams.com (last post 2022), and r/gamejams.
     // gamedev
     // -- engine first-party blogs, verified live on 2026-09-18. The prompt scores
     // patch and QOL releases as noise, so these can stay unfiltered. O3DE has no
@@ -485,6 +521,13 @@ export const sourcesConfig: SourcesConfig = {
     // PAMI-Code (81). HY-Motion front ends are at 2-3.
     { lane: 'ai_gamedev', name: 'Text to motion', query: 'text-to-motion', minStars: 20 },
   ],
+
+  // Devpost hackathons for the events lane (lib/sources/devpost.ts). Checked live
+  // on 2026-11-17: the Gaming theme listed about 10 open or upcoming hackathons, and
+  // the US$1,000 bar kept the ones with a real prize (Reddit's Game of the Day at
+  // US$35,000, "games for good" at US$11,960). The Machine Learning/AI theme lists
+  // 64, nearly all enterprise hackathons with no game or 3D angle, so it is left out.
+  devpost: [{ lane: 'events', name: 'Devpost (Gaming)', themes: ['Gaming'], minPrize: 1000, onlineOnly: true }],
 
   // Empty until a throwaway account exists and RETTIWT_API_KEY is set (TODO T3).
   twitterLists: [],

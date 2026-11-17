@@ -12,9 +12,12 @@
  * JSON Schema cannot express anyway (ids must come from *this* batch, exactly once).
  */
 import {
+  EVENT_KINDS,
   LANES,
   type Assignment,
   type EnrichResult,
+  type EventFacts,
+  type EventKind,
   type GlossaryTerm,
   type Lane,
   type NewStoryInput,
@@ -47,6 +50,25 @@ export const GLOSSARY_SCHEMA = {
   },
 } as const;
 
+const NULLABLE_STRING = { type: ['string', 'null'] } as const;
+
+/** The facts of an events-lane story. Dates are `YYYY-MM-DD`; the validator checks them. */
+export const EVENT_SCHEMA = {
+  type: 'object',
+  properties: {
+    kind: { type: 'string', enum: [...EVENT_KINDS] },
+    starts: NULLABLE_STRING,
+    ends: NULLABLE_STRING,
+    deadline: NULLABLE_STRING,
+    deadlineLabel: NULLABLE_STRING,
+    where: NULLABLE_STRING,
+    cost: NULLABLE_STRING,
+    prize: NULLABLE_STRING,
+  },
+  required: ['kind', 'starts', 'ends', 'deadline', 'deadlineLabel', 'where', 'cost', 'prize'],
+  additionalProperties: false,
+} as const;
+
 const NEW_STORY_SCHEMA = {
   type: 'object',
   properties: {
@@ -56,6 +78,8 @@ const NEW_STORY_SCHEMA = {
     summaryDetail: { type: ['string', 'null'] },
     score: { type: 'integer', minimum: 1, maximum: 5 },
     glossary: GLOSSARY_SCHEMA,
+    // Not required: only a story in the events lane has one.
+    event: EVENT_SCHEMA,
   },
   required: ['lane', 'title', 'summaryShort', 'summaryDetail', 'score', 'glossary'],
   additionalProperties: false,
@@ -77,6 +101,7 @@ export const ENRICH_JSON_SCHEMA = {
               updatedDetail: { type: ['string', 'null'] },
               updatedScore: { type: 'integer', minimum: 1, maximum: 5 },
               updatedGlossary: GLOSSARY_SCHEMA,
+              updatedEvent: EVENT_SCHEMA,
             },
             required: ['itemIds', 'storyId'],
             additionalProperties: false,
@@ -233,6 +258,7 @@ export function validateEnrichResult(
           score: s.score as Score,
           glossary: sanitizeGlossary(s.glossary),
         };
+        if (newStory.lane === 'events') newStory.event = sanitizeEvent(s.event);
         assignments.push({ itemIds, newStory });
       }
       return;
@@ -253,6 +279,8 @@ export function validateEnrichResult(
       else update.updatedShort = raw.updatedShort.trim();
     }
     if (Array.isArray(raw.updatedGlossary)) update.updatedGlossary = sanitizeGlossary(raw.updatedGlossary);
+    const updatedEvent = sanitizeEvent(raw.updatedEvent);
+    if (updatedEvent) update.updatedEvent = updatedEvent;
     if (raw.updatedScore !== undefined) {
       if (!isScore(raw.updatedScore)) {
         errors.push(`${where}.updatedScore ${JSON.stringify(raw.updatedScore)} is not 1-5`);
@@ -312,6 +340,55 @@ export function sanitizeGlossary(raw: unknown): GlossaryTerm[] {
     out.push(full ? { term, definition, full } : { term, definition });
   }
   return out;
+}
+
+const MAX_EVENT_TEXT_CHARS = 80;
+const EVENT_DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** A real calendar day as `YYYY-MM-DD`, or null. `2026-02-30` is not a day. */
+function eventDay(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const m = EVENT_DAY_RE.exec(raw.trim());
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  const real = date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d;
+  return real ? m[0] : null;
+}
+
+function eventText(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const text = raw.replace(/\s+/g, ' ').trim();
+  if (text.length === 0) return null;
+  return text.length <= MAX_EVENT_TEXT_CHARS ? text : `${text.slice(0, MAX_EVENT_TEXT_CHARS - 1)}…`;
+}
+
+/**
+ * Event facts are a reading aid like the glossary, so bad ones never fail the
+ * batch: a field that is not a real day or a short string becomes null, and a
+ * missing object leaves the story with no facts line. The dates are the strict
+ * part, because the reminder and the open-story window cast them in SQL. An end
+ * before the start is dropped rather than trusted.
+ */
+export function sanitizeEvent(raw: unknown): EventFacts | null {
+  if (!isObject(raw)) return null;
+  const kind: EventKind = (EVENT_KINDS as readonly string[]).includes(raw.kind as string)
+    ? (raw.kind as EventKind)
+    : 'program';
+  const starts = eventDay(raw.starts);
+  let ends = eventDay(raw.ends);
+  if (ends !== null && (starts === null || ends <= starts)) ends = null;
+  const deadline = eventDay(raw.deadline);
+  return {
+    kind,
+    starts,
+    ends,
+    deadline,
+    deadlineLabel: deadline ? eventText(raw.deadlineLabel) : null,
+    where: eventText(raw.where),
+    cost: eventText(raw.cost),
+    prize: eventText(raw.prize),
+  };
 }
 
 /** Whitespace is collapsed inside each paragraph; the blank lines between them stay. */

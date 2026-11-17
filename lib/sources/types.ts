@@ -32,7 +32,7 @@ export interface SourceCtx {
 }
 
 export interface Source {
-  name: 'rss' | 'reddit' | 'hn' | 'steam' | 'prices' | 'twitter' | 'docs' | 'huggingface' | 'github';
+  name: 'rss' | 'reddit' | 'hn' | 'steam' | 'prices' | 'twitter' | 'docs' | 'huggingface' | 'github' | 'devpost';
   fetch(ctx: SourceCtx): Promise<RawItem[]>;
   /**
    * The source returns its whole current listing every run rather than what is new
@@ -41,6 +41,13 @@ export interface Source {
    * it silently instead of sending every existing page to the model.
    */
   snapshot?: boolean;
+  /**
+   * For a snapshot source whose current listing is itself the news. Set to false,
+   * the first listing of an `author` is sent to the model like any later one
+   * instead of being stored as already seen: a hackathon that is open today is
+   * worth a story on the day the watch is added.
+   */
+  seedFirstListing?: boolean;
   /** Overrides `sourceTimeoutMs` for a source that must pace itself, e.g. Reddit. */
   timeoutMs?: number;
 }
@@ -151,6 +158,25 @@ export interface GithubSearchSpec {
   minStars: number;
 }
 
+/**
+ * A Devpost hackathon search (lib/sources/devpost.ts). Devpost is where most
+ * online hackathons with prize money are listed, and its listing API states the
+ * dates, place and prize of each one.
+ */
+export interface DevpostSpec {
+  lane: Lane;
+  /** Stored as the item's author, and shown in logs. */
+  name: string;
+  /** Devpost theme names, e.g. `Gaming`. A hackathon must carry every one. */
+  themes?: string[];
+  /** Free-text search, matched by Devpost against the title and description. */
+  search?: string;
+  /** Minimum total prize, in whatever currency the listing states. 0 keeps all. */
+  minPrize: number;
+  /** Keep only hackathons whose location is "Online". */
+  onlineOnly?: boolean;
+}
+
 export interface TwitterListSpec {
   lane: Lane;
   /** Twitter List id owned by the throwaway account. */
@@ -223,6 +249,8 @@ export interface SourcesConfig {
   huggingface: HuggingFaceConfig;
   /** At most 10 searches: the unauthenticated search limit is 10 a minute. */
   github: GithubSearchSpec[];
+  /** Hackathon searches for the events lane. */
+  devpost: DevpostSpec[];
   twitterLists: TwitterListSpec[];
   twitterQueries: TwitterQuerySpec[];
   twitterUsers: TwitterUserSpec[];

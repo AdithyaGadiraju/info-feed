@@ -185,6 +185,25 @@
   .product-link:hover {
     color: var(--text);
   }
+  /* Events lane: label and value pairs, the labels in one column. */
+  .event-facts {
+    display: grid;
+    gap: 4px;
+    font-size: 0.9375rem;
+  }
+  .event-facts > div {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: 12px;
+  }
+  .event-facts dt {
+    color: var(--text-3, var(--text-2));
+  }
+  .event-facts dd {
+    margin: 0;
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
   /* Foot: the article link fills the left, the Done button sits at the right. */
   .story-foot {
     display: flex;

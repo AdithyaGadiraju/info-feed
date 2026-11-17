@@ -14,6 +14,7 @@ import {
   isVerdict,
   laneGroup,
   type EnrichResult,
+  type EventFacts,
   type FeedCursor,
   type FeedPage,
   type GlossaryTerm,
@@ -64,6 +65,8 @@ function toStory(r: Row): Story {
     score: Number(r.score) as Score,
     glossary: Array.isArray(r.glossary) ? (r.glossary as GlossaryTerm[]) : [],
     products: Array.isArray(r.products) ? (r.products as ProductEntry[]) : [],
+    // Null outside the events lane, and when the query did not select the column.
+    event: r.event && typeof r.event === 'object' ? (r.event as EventFacts) : null,
     firstSeenAt: r.first_seen_at as Date,
     updatedAt: r.updated_at as Date,
     digestedAt: (r.digested_at as Date | null) ?? null,
@@ -105,6 +108,15 @@ const DISCUSSION_HOST_RE =
  */
 function bestLinkFirst(sql: Sql) {
   return sql`(i.url ~* ${DISCUSSION_HOST_RE}), i.published_at ASC, i.id ASC`;
+}
+
+/**
+ * One date out of `stories.event` as a SQL date, NULL when absent. The validator
+ * (sanitizeEvent) only stores real `YYYY-MM-DD` days; the pattern guard is for a
+ * row edited by hand, so a bad value reads as "no date" and never fails the query.
+ */
+function eventDay(sql: Sql, key: 'starts' | 'ends' | 'deadline') {
+  return sql`to_date(substring(event->>${key} from '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'), 'YYYY-MM-DD')`;
 }
 
 // ---- items ----
@@ -274,15 +286,21 @@ export async function pruneOldBodies(days = 30): Promise<number> {
  * arriving at 11:00 can join a story created at 09:00 (ADR 0003). Highest score
  * first, because the cap is there to bound input tokens. Several lanes are passed
  * for a lane group (`laneGroup`), whose items can join a story in any of them.
+ *
+ * An events story stays open until its last date has passed, however old it is:
+ * an event is announced once and then written about for weeks (partners, sign-ups,
+ * a reminder), and each of those must join the one story instead of starting another.
  */
 export async function getOpenStories(lanes: Lane | Lane[], hours = 48, max = 150): Promise<Story[]> {
   const sql = db();
   const list = Array.isArray(lanes) ? lanes : [lanes];
   const rows = await sql`
-    SELECT id::int AS id, lane, title, summary_short, summary_detail, score,
+    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, event,
            first_seen_at, updated_at, digested_at
     FROM stories
-    WHERE lane = ANY(${sql.array(list)}::text[]) AND updated_at > now() - ${`${hours} hours`}::interval
+    WHERE lane = ANY(${sql.array(list)}::text[])
+      AND (updated_at > now() - ${`${hours} hours`}::interval
+           OR (lane = 'events' AND GREATEST(${eventDay(sql, 'starts')}, ${eventDay(sql, 'ends')}, ${eventDay(sql, 'deadline')}) >= current_date))
     ORDER BY score DESC, updated_at DESC
     LIMIT ${max}
   `;
@@ -338,10 +356,13 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
         // never come back from getOpenStories for this run, so later items about
         // the same event would spawn a duplicate story instead of joining it.
         const storyLane = group.includes(s.lane) ? s.lane : lane;
+        // Facts belong to the events lane only; a story the run's lane pulled
+        // back out of it (see above) must not keep them.
+        const event = storyLane === 'events' && s.event ? tx.json(s.event as never) : null;
         const [row] = await tx`
-          INSERT INTO stories (lane, title, summary_short, summary_detail, score, glossary)
+          INSERT INTO stories (lane, title, summary_short, summary_detail, score, glossary, event)
           VALUES (${storyLane}, ${s.title}, ${s.summaryShort}, ${s.summaryDetail}, ${s.score},
-                  ${tx.json(s.glossary as never)})
+                  ${tx.json(s.glossary as never)}, ${event})
           RETURNING id::int AS id
         `;
         storyId = Number(row.id);
@@ -353,6 +374,7 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
         if (a.updatedDetail !== undefined) sets.push('detail');
         if (a.updatedScore !== undefined) sets.push('score');
         if (a.updatedGlossary !== undefined) sets.push('glossary');
+        if (a.updatedEvent !== undefined) sets.push('event');
 
         if (sets.length > 0) {
           const res = await tx`
@@ -363,6 +385,12 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
               score          = COALESCE(${a.updatedScore ?? null}, score),
               glossary       = CASE WHEN ${a.updatedGlossary !== undefined}
                                     THEN ${tx.json((a.updatedGlossary ?? []) as never)} ELSE glossary END,
+              -- Only an events story has facts. A moved deadline is due a new reminder.
+              event_reminded_at = CASE WHEN ${a.updatedEvent !== undefined} AND lane = 'events'
+                                         AND event->>'deadline' IS DISTINCT FROM ${a.updatedEvent?.deadline ?? null}
+                                       THEN NULL ELSE event_reminded_at END,
+              event          = CASE WHEN ${a.updatedEvent !== undefined} AND lane = 'events'
+                                    THEN ${tx.json((a.updatedEvent ?? null) as never)} ELSE event END,
               updated_at     = date_trunc('milliseconds', now()),
               -- New definitions for the same words are not a new story to read.
               done_at        = CASE WHEN ${a.updatedShort !== undefined || a.updatedDetail !== undefined || a.updatedScore !== undefined}
@@ -409,7 +437,7 @@ export async function getDigestStories(
 ): Promise<StoryWithLink[]> {
   const sql = db();
   const rows = await sql`
-    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary, products,
+    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary, products, event,
            first_seen_at, updated_at, digested_at, done_at,
            verdict, verdict_note, verdict_sources, verified_at,
            (SELECT i.url FROM items i WHERE i.story_id = stories.id
@@ -422,6 +450,31 @@ export async function getDigestStories(
     LIMIT ${limit}
   `;
   return rows.map(toStoryWithLink);
+}
+
+/** How many days before an event's deadline (or start) the reminder fires. */
+export const EVENT_REMINDER_DAYS = 3;
+
+/**
+ * The events lane's reminder. A story whose deadline (or start day, when it has no
+ * deadline) is at most `days` away gets a new `updated_at`, which puts it back at
+ * the top of the feed and makes the digest post it again (getDigestStories), and
+ * loses its Done mark. It fires once per story (`event_reminded_at`), and not for
+ * a story first seen under two days ago, which the reader has only just been told
+ * about. Score 3+ only: lower stories are not shown in the feed by default.
+ */
+export async function remindUpcomingEvents(days = EVENT_REMINDER_DAYS): Promise<number[]> {
+  const sql = db();
+  const rows = await sql`
+    UPDATE stories
+    SET updated_at = date_trunc('milliseconds', now()), done_at = NULL, event_reminded_at = now()
+    WHERE lane = 'events' AND score >= 3 AND event_reminded_at IS NULL
+      AND first_seen_at < now() - interval '2 days'
+      AND COALESCE(${eventDay(sql, 'deadline')}, ${eventDay(sql, 'starts')})
+          BETWEEN current_date AND current_date + ${days}::int
+    RETURNING id::int AS id
+  `;
+  return rows.map((r) => Number(r.id));
 }
 
 /**
@@ -550,7 +603,7 @@ export async function getFeedPage(opts: {
   const patterns = searchPatterns(opts.q ?? '');
 
   const rows = await sql`
-    SELECT s.id::int AS id, s.lane, s.title, s.summary_short, s.summary_detail, s.score, s.glossary, s.products,
+    SELECT s.id::int AS id, s.lane, s.title, s.summary_short, s.summary_detail, s.score, s.glossary, s.products, s.event,
            s.first_seen_at, s.updated_at, s.digested_at, s.done_at,
            s.verdict, s.verdict_note, s.verdict_sources, s.verified_at,
            cnt.item_count, cnt.primary_url
@@ -706,7 +759,7 @@ export async function setProducts(entries: Array<{ id: number; products: Product
 export async function getStoryWithItems(id: number): Promise<StoryWithItems | null> {
   const sql = db();
   const [row] = await sql`
-    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary, products,
+    SELECT id::int AS id, lane, title, summary_short, summary_detail, score, glossary, products, event,
            first_seen_at, updated_at, digested_at, done_at,
            verdict, verdict_note, verdict_sources, verified_at,
            (SELECT i.url FROM items i WHERE i.story_id = stories.id

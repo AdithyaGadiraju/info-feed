@@ -27,6 +27,7 @@ const baseConfig: SourcesConfig = {
   thresholds: { redditMinUpvotes: 0, redditTopN: REDDIT_TOP_N, hnMinPoints: 0, twitterMinLikes: 0 },
   huggingface: { models: [], papers: [] },
   github: [],
+  devpost: [],
   twitterLists: [],
   twitterQueries: [],
   twitterUsers: [],

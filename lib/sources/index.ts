@@ -10,6 +10,7 @@ import { sourcesConfig } from '../../config/sources';
 import { finishRun, getSnapshotState, setItemBodies, startRun, upsertItems } from '../db/queries';
 import { EXCLUDED_STORY_ID, type NewItem } from '../db/types';
 import { fetchBodies } from '../fetchBody';
+import devpost from './devpost';
 import docs from './docs';
 import github from './github';
 import hn from './hn';
@@ -28,7 +29,7 @@ import { followedAccount } from './followed';
  * huggingface and github, whose items rely on the fetched model card or README,
  * sit ahead of reddit and hn.
  */
-export const allSources: Source[] = [rss, docs, huggingface, github, reddit, hn, steam, prices, twitter];
+export const allSources: Source[] = [rss, docs, devpost, huggingface, github, reddit, hn, steam, prices, twitter];
 
 /**
  * A ceiling on body extraction per run. Bodies are the slowest part of ingestion
@@ -250,7 +251,9 @@ export async function ingest(opts: IngestOptions): Promise<IngestResult> {
         // would flip its excluded sentinel back to pending (see upsertItems).
         const state = await getSnapshotState(inLane[0].source, inLane.map((i) => i.externalId));
         fresh = inLane.filter((i) => !state.known.has(i.externalId));
-        for (const i of fresh) if (!state.authors.has(i.author ?? '')) seeding.add(i.externalId);
+        if (source.seedFirstListing !== false) {
+          for (const i of fresh) if (!state.authors.has(i.author ?? '')) seeding.add(i.externalId);
+        }
       }
 
       const excluded = new Set<string>();

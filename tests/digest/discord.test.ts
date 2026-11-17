@@ -38,6 +38,7 @@ const mockQueries = vi.hoisted(() => ({
   recordDigest: vi.fn(),
   startRun: vi.fn(),
   finishRun: vi.fn(),
+  remindUpcomingEvents: vi.fn(async () => [] as number[]),
 }));
 
 vi.mock('../../lib/db/queries.js', () => mockQueries);
@@ -56,6 +57,7 @@ function story(overrides: Partial<StoryWithLink> = {}): StoryWithLink {
     summaryShort: 'A short summary of the thing.',
     glossary: [],
     products: [],
+    event: null,
     summaryDetail: null,
     score: 4,
     firstSeenAt: new Date('2026-09-13T00:00:00Z'),
@@ -145,6 +147,38 @@ describe('buildLaneEmbed', () => {
       .description;
 
     expect(description).toContain('**Unchecked**');
+  });
+
+  it('puts the facts of an events story above the fact-check, with a countdown near the deadline', () => {
+    const megajam = story({
+      lane: 'events',
+      title: 'Epic AI MegaJam 2026',
+      event: {
+        kind: 'jam',
+        starts: '2026-09-10',
+        ends: '2026-09-15',
+        deadline: '2026-09-15',
+        deadlineLabel: 'Submit by',
+        where: 'Online',
+        cost: 'Free',
+        prize: 'US$50k pool',
+      },
+    });
+    // NOW is 13 Sep in Sydney: two days before the deadline.
+    const [payload] = buildLaneEmbed('events', [megajam], BASE_URL, NOW);
+    const description = payload.embeds![0].description;
+    expect(payload.embeds![0].title).toBe('EVENTS · 13 Sep PM');
+    expect(description).toContain(
+      'Game jam · 10-15 Sep 2026 · Online · Submit by 15 Sep 2026 (closes in 2 days) · Free · US$50k pool\n**Unchecked**',
+    );
+  });
+
+  it('adds no facts line to a story outside the events lane', () => {
+    const [payload] = buildLaneEmbed('ai', [story()], BASE_URL, NOW);
+    expect(payload.embeds![0].description).toBe(
+      '●●●●○ **Anthropic ships a new thing**\nA short summary of the thing.\n**Unchecked**\n' +
+        'https://anthropic.test/blog/new-thing\nhttps://feed.test/story/1',
+    );
   });
 
   it('produces no messages for an empty lane', () => {
@@ -397,6 +431,30 @@ describe('digestLane', () => {
     expect(mockQueries.getDigestStories).not.toHaveBeenCalled();
     expect(verifier).not.toHaveBeenCalled();
     expect(mockQueries.recordDigest).toHaveBeenCalledWith('ai', [11], 204);
+  });
+
+  it('fires the deadline reminder before selecting the events lane, and for no other lane', async () => {
+    mockQueries.getDigestStories.mockResolvedValue([]);
+    mockQueries.remindUpcomingEvents.mockClear();
+
+    await digestLane('ai');
+    expect(mockQueries.remindUpcomingEvents).not.toHaveBeenCalled();
+
+    await digestLane('events');
+    expect(mockQueries.remindUpcomingEvents).toHaveBeenCalledOnce();
+    expect(mockQueries.remindUpcomingEvents.mock.invocationCallOrder[0]).toBeLessThan(
+      mockQueries.getDigestStories.mock.invocationCallOrder.at(-1)!,
+    );
+  });
+
+  it('still digests the events lane when the reminder fails', async () => {
+    mockQueries.getDigestStories.mockResolvedValue([story({ id: 12, lane: 'events' })]);
+    mockQueries.remindUpcomingEvents.mockRejectedValueOnce(new Error('connection lost'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await digestLane('events', { poster: async () => ({ ok: true, status: 204 }) });
+    expect(result).toEqual({ sent: 1, ok: true, status: 204 });
+    warn.mockRestore();
   });
 
   it('skips posting entirely for an empty lane', async () => {
