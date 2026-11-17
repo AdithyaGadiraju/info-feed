@@ -86,7 +86,7 @@ async function fetchFeed(feed: FeedSpec, ctx: SourceCtx, xmlByUrl: Map<string, P
   const items: RawItem[] = [];
   for (const entry of parsed.items) {
     const url = entry.link;
-    const title = entry.title?.trim();
+    const title = entry.title ? stripHtml(entry.title) : undefined;
     if (!url || !title) continue;
     if (feed.include && !feed.include.test(title)) continue;
     if (feed.exclude?.test(title)) continue;

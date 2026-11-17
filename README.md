@@ -1,6 +1,6 @@
 # info-feed
 
-A personal news digest across seven lanes: **ai** (AI News), **ai_dev** (AI Dev), **ai_gamedev** (AI Gamedev), **markets**, **betting**, **gamedev**, **games**.
+A personal news digest across eight lanes: **ai** (AI News), **ai_dev** (AI Dev), **ai_gamedev** (AI Gamedev), **events** (Events), **markets**, **betting**, **gamedev**, **games**.
 
 It ingests free sources (RSS, Reddit, Hacker News, Hugging Face, GitHub, Steam, crypto prices, and optionally
 Twitter), uses one Claude call per lane to cluster the raw items into stories with a
@@ -14,7 +14,13 @@ context, harness, loop and goal engineering get coined. **ai_gamedev** (labelled
 Gamedev") is AI tooling for making games: new 3D, texture, sprite, animation and audio
 models, Blender add-ons and MCP servers, and AI assistants for game engines. It is
 deliberately wide, ingesting model hubs, GitHub, vendor sites, papers and communities,
-and the prompt keeps niche releases rather than marking them down. Lane ids never
+and the prompt keeps niche releases rather than marking them down.
+
+**events** (labelled "Events") is not news. It holds things to take part in: game jams,
+hackathons and contests; talks, conferences and expos; grants and early-access
+programmes, for game development and for AI in games, 3D and graphics. Each story
+carries a facts line (when, where, deadline, cost, prize) and comes back once, three
+days before its deadline. See "Events" in `docs/scoring.md`. Lane ids never
 change once data exists; display names live in `LANE_LABELS` in `lib/db/types.ts`.
 
 Design decisions live in `docs/adr/`. Read those before changing anything structural;

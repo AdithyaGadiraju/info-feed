@@ -148,7 +148,7 @@ describe('buildUserPrompt', () => {
   it('names the lane and the open stories', () => {
     const text = buildUserPrompt('betting', [story({ id: 45 })], items);
     expect(text).toContain('Lane: betting');
-    expect(text).toContain('OPEN STORIES IN THIS LANE (1, last 48h');
+    expect(text).toContain('OPEN STORIES IN THIS LANE (1, last 48h)');
     expect(text).toContain('#45 | score 4');
   });
 
@@ -193,8 +193,16 @@ describe('buildUserPrompt', () => {
     );
   });
 
+  it('tells a batch that can file into events what day it is, and no other batch', () => {
+    const line = 'Today is 2026-11-17.';
+    expect(buildUserPrompt('gamedev', [], items, [], '2026-11-17')).toContain(line);
+    expect(buildUserPrompt('events', [], items, [], '2026-11-17')).toContain(line);
+    expect(buildUserPrompt('markets', [], items, [], '2026-11-17')).not.toContain(line);
+    expect(buildUserPrompt('gamedev', [], items)).not.toContain('Today is');
+  });
+
   it('keeps events out of a lane that does not feed it', () => {
-    const text = buildUserPrompt('markets', [], items);
+    const text = buildUserPrompt('markets', [story({ lane: 'markets' })], items);
     expect(text).toContain('Lane: markets');
     expect(text).not.toContain('events');
   });

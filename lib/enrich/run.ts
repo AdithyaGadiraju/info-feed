@@ -128,7 +128,9 @@ async function enrichChunk(
 )> {
   const system = buildSystemPrompt();
   const followed = sourcesConfig.twitterUsers ?? [];
-  const user = buildUserPrompt(lane, stories, items, followed);
+  // en-CA formats a date as YYYY-MM-DD.
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: env.tz }).format(new Date());
+  const user = buildUserPrompt(lane, stories, items, followed, today);
   const pendingIds = items.map((i) => i.id);
   const openIds = stories.map((s) => s.id);
 

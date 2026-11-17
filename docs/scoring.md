@@ -54,6 +54,68 @@ research news) is `ai`.
 Items that are ads, memes, job posts or engagement bait are not scored at all. They
 go in `dropped`.
 
+## Events
+
+`events` holds things to take part in, not news: game jams, hackathons and contests;
+talks, seminars, conferences and expos; grants, calls for speakers and early-access
+programmes. The subject is game development, or AI for games, 3D, graphics and
+creative tools. It exists because the other lanes rank tools and news: the Epic AI
+MegaJam reached the feed in October 2026 and scored 2-3 in `ai_gamedev`.
+
+**How an event gets there.** An event is announced on the same feeds as tools and
+engine news. So a batch from `ai`, `ai_dev`, `ai_gamedev` or `gamedev` also sees
+the open events stories and may file a new story under `events` (`SHARED_LANES` in
+`lib/db/types.ts`). The lane also has sources of its own in `config/sources.ts`:
+vendor feeds read again through an event title gate, and Devpost hackathons with a
+prize (`lib/sources/devpost.ts`).
+
+```
+ Unreal forum, Unity blog, 80.lv, HN, Reddit ...        Devpost, GCAP, SIGGRAPH ...
+        |  (lane hint: ai_gamedev, gamedev, ...)                |  (lane hint: events)
+        v                                                       v
+  enrich batch for that lane  ------ "is this an event ------  enrich batch for events
+        |                            the reader can enter?"         |
+        |  no                              | yes                    |  not an open event
+        v                                  v                        v
+  story in the source lane         story in events             dropped
+  (tool rubric)                    (three tests below)
+```
+
+**Only while it is open.** A story belongs in `events` while the reader can still
+sign up, submit, apply, attend or watch live. Winners lists, recaps and one person's
+jam entry stay in the lane they came from. Batches that can file into `events` are
+told today's date for this.
+
+**Score: three tests.** The reader wants top picks only.
+
+| Test | Passes when |
+|---|---|
+| Theme | AI for game development, 3D or creative tools is the theme, or AI tools are allowed and central |
+| Access | The reader can take part online, or in person in Australia. A hybrid event is judged by its online part |
+| Weight | Real prizes, or a major organiser (engine vendor, AI lab, known tool vendor, major conference) |
+
+| Result | Score |
+|---|---|
+| All three | 5 |
+| Access plus one other (a major jam with prizes and no AI angle; an AI-for-games conference that streams) | 4 |
+| One test only, or reachable only by travel overseas | 2, or 3 when the theme is AI for games |
+| Small hobby jam, generic enterprise AI hackathon, paid course, sales webinar | dropped |
+
+**Facts.** Each events story stores `event`: kind, starts, ends, deadline,
+deadlineLabel, where, cost and prize. Dates are `YYYY-MM-DD` and are never guessed;
+a fact the sources do not state is null. The web card shows them as a list and the
+digest as one line. The detail ends with a **Do this:** line.
+
+**One event, one story.** An events story stays in the open-stories list until its
+last date has passed, not for 48 hours. A later post about the same event (partners,
+sign-ups, the theme) joins that story, and may update the facts.
+
+**Reminder.** Three days before the deadline (or the start, when there is no
+deadline) the story gets a new `updated_at` once: it goes back to the top of the
+feed, loses its Done mark, and the digest posts it again if it scores 4 or more. A
+moved deadline is due a new reminder. `remindUpcomingEvents` in
+`lib/db/queries.ts` does this, at the start of the events lane's digest.
+
 ## How it changes
 
 A story's score is set when it is created. A later run can change it with

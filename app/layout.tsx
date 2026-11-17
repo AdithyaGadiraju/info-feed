@@ -8,7 +8,7 @@ const brand = Figtree({ subsets: ['latin'], variable: '--font-brand', display: '
 
 export const metadata: Metadata = {
   title: 'info-feed',
-  description: 'Personal multi-lane feed: ai, ai_dev, ai_gamedev, markets, betting, gamedev, games.',
+  description: 'Personal multi-lane feed: ai, ai_dev, ai_gamedev, events, markets, betting, gamedev, games.',
 };
 
 export const viewport: Viewport = {

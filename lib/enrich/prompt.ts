@@ -26,7 +26,7 @@ const LANE_NOTES: Record<Lane, string> = {
   ai_gamedev:
     "AI tools and models for making games. The reader is a solo or near-solo game developer who is not tied to one engine and wants to know about tools for all of them (Godot, Unity, Unreal, Roblox, web and custom engines) and for every art and audio tool, so never mark a story down for the engine or tool it targets. Judge fit by team size instead: a tool that one person or a very small team can get, afford and run is a full fit; one that needs a studio pipeline, an enterprise contract or a large team still gets a story, with that limit stated in the summary. It covers models and tools that generate game assets: text-to-3D and image-to-3D (Hunyuan3D, TRELLIS, Tripo, Rodin, Meshy and new open-weights models), textures and PBR materials, concept art, 2D art, sprites, pixel art and tilesets, rigging, animation, motion capture and retargeting, sound effects, music and voice, skyboxes, levels and worlds, gaussian splatting and world models. It covers Blender add-ons and MCP servers that let a model build, rig, texture or script in Blender; coding agents, MCP servers and assistants for game engines (Godot, Unity, Unreal, Roblox) and engine vendors' own AI features; runtime AI for games (NPCs, dialogue, AI-driven procedural generation) when it ships as a tool or SDK; and papers that release code or weights for any of these. The reader wants every new tool and model here, including niche ones from small teams and solo developers, so never drop or mark down a release for being obscure or new. Judge an asset tool by whether its output could go in a shipped game: an export path (GLB, FBX, OBJ, PNG sheets, WAV), clean topology, rigging, PBR maps, consistent style across sprites, a licence that allows commercial use, and evidence from real tests. Score by how much it could change how the reader makes a game: a new model or major version that beats the previous best for an asset type, or a Blender or engine integration that turns a prompt into a usable asset, is 5; any new tool, model, add-on or MCP server that produces something usable in a game, even a niche one, is 4; a paper with code or weights, a notable update to an existing tool, or a hands-on comparison or workflow write-up is 3; a showcase with no tool or method behind it, a demo nobody can use, funding with no product, and opinion about AI in games are 1 or 2. Lawsuits, layoffs, policy and platform rules about AI in games go in ai",
   events:
-    'events and opportunities the reader could take part in, not news about them. The reader is a solo game developer in Sydney, Australia, who builds with AI tools. It covers game jams, hackathons and contests; talks, seminars, webinars, conferences and expos; and grants, dev funds, calls for speakers, closed betas and early-access programmes, when they are about game development or about AI for games, 3D, graphics or creative tools. A story belongs here only while the reader can still act: sign up, submit, apply, attend or watch live. A report on an event that is over, a list of winners, a recap of a talk, survey results from a conference, and one person writing about their own jam entry are not events and stay in the lane they came from. The reader wants top picks only, so score by three tests. Theme: AI for game development, 3D or creative tools is the theme, or AI tools are allowed and central. Access: the reader can take part online, or in person in Australia; judge a hybrid event by its online part. Weight: real prizes, or a major organiser (an engine vendor, an AI lab, a known tool vendor, a major conference or community). All three is 5. Access plus one of the other two is 4: a major game jam with prizes and no AI angle (Unity, GMTK, Ludum Dare, Global Game Jam), or a major AI-for-games conference that streams its talks. A real event that passes one test, or that the reader could only reach by travelling overseas, is 2, or 3 when its theme is AI for games. Drop small hobby jams with no prize and no known organiser, generic AI or enterprise hackathons with no game, 3D or creative angle, paid courses and sales webinars',
+    'events and opportunities the reader could take part in, not news about them. The reader is a solo game developer in Sydney, Australia, who builds with AI tools. It covers game jams, hackathons and contests; talks, seminars, webinars, conferences and expos; and grants, dev funds, calls for speakers, closed betas and early-access programmes, when they are about game development or about AI for games, 3D, graphics or creative tools. A story belongs here only while the reader can still act: sign up, submit, apply, attend or watch live. A report on an event that is over, a list of winners, a recap of a talk, survey results from a conference, and one person writing about their own jam entry are not events and stay in the lane they came from. The reader wants top picks only, so score by three tests. Theme: AI for game development, 3D or creative tools is the theme, or AI tools are allowed and central. Access: the reader can take part online, or in person in Australia; judge a hybrid event by its online part. Weight: real prizes, or a major organiser (an engine vendor, an AI lab, a known tool vendor, a major conference or community). All three is 5. Access plus one of the other two is 4: a major game jam with prizes and no AI angle (Unity, GMTK, Ludum Dare, Global Game Jam), or a major AI-for-games conference that streams its talks. A real event that passes one test, or that the reader could only reach by travelling overseas, is 2, or 3 when its theme is AI for games. Drop small hobby jams with no prize and no known organiser, generic AI or enterprise hackathons with no game, 3D or creative angle, paid courses and sales webinars. In a batch whose lane is events, also drop every item that is not an event the reader can still act on: those feeds are read for events only',
   markets: 'crypto and macro markets, prices, regulation, exchanges',
   betting: 'sports betting, odds, bookmakers, betting models and datasets, MMA and UFC markets',
   gamedev:
@@ -219,7 +219,8 @@ All eight keys are present every time; a value the items do not state is null.
   or three words: "Register by", "Submit by", "Apply by".
 - "where": "Online", a city, or both. "cost" and "prize": short, with the
   currency ("Free", "US$299", "US$50k pool"). "prize" is null when there is none.
-- Use only what the items state. Never guess a date. When the text gives a day with no year, take the year
+- Use only what the items state. Never guess a date, and never use the day an
+  item was published as an event date. When the text gives a day with no year, take the year
   from the item's published date.
 - One event is one story. A later post about the same event (partners named,
   sign-ups open, the theme revealed, a reminder) attaches to its open story,
@@ -256,7 +257,14 @@ DROPPING
 Put an item in "dropped" when it is advertising, a giveaway, a meme, engagement
 bait, a job post, a self-promotion thread, or has no substance worth a story. Two
 exceptions. When the batch header lists events, an announcement of an event the
-reader could enter is not advertising or a giveaway: judge it by the events lane.
+reader could enter is never advertising, a giveaway or self-promotion. Read each
+item on its own: a jam announced by its organiser is an event even when the same
+batch holds chatter about jams. An event that is still open and is run by an
+engine vendor, an AI lab, a known tool vendor or a major conference always gets
+an events story, however short the item is; the three tests set its score, they
+do not decide whether it exists. Only the kinds the events lane names (small
+hobby jams, generic hackathons, paid courses, sales webinars) and events that
+are over are dropped.
 And in ai_gamedev, a developer announcing a tool, model or add-on they
 built is a release, not self-promotion; keep it when people can use the tool. Being
 a duplicate is not a reason to drop: duplicates get attached to the story they
@@ -364,20 +372,32 @@ export function buildUserPrompt(
   openStories: Story[],
   pendingItems: Item[],
   followed: readonly TwitterUserSpec[] = [],
+  /**
+   * Today as `YYYY-MM-DD` in the reader's time zone. Passed in, never read from
+   * a clock here. Only a batch that can file into events is told the date: an
+   * event is a story only while the reader can still act, and without today's
+   * date the model cannot tell an open jam from one that ended last week.
+   */
+  today?: string,
 ): string {
   const group = laneGroup(lane);
   const grouped = group.length > 1;
+  const hasEvents = group.includes('events');
   const where = grouped ? `IN LANES ${group.join(', ')}` : 'IN THIS LANE';
   const storiesBlock =
     openStories.length > 0
-      ? `OPEN STORIES ${where} (${openStories.length}, last 48h, plus events that have not ended)\n${serialiseStories(openStories, grouped)}`
+      ? `OPEN STORIES ${where} (${openStories.length}, last 48h${hasEvents ? ', plus events that have not ended' : ''})\n${serialiseStories(openStories, grouped)}`
       : `OPEN STORIES ${where}: none`;
   const laneLine = grouped
     ? `Lane: ${lane}. New stories go in ${group.slice(0, -1).join(', ')} or ${group.at(-1)} by content (hard rule 3).\n` +
       group.map((l) => `- ${l}: ${LANE_NOTES[l]}`).join('\n')
     : `Lane: ${lane} — ${LANE_NOTES[lane]}`;
+  const todayLine =
+    hasEvents && today
+      ? `\nToday is ${today}. An event is open while its deadline, or its last day when it has no deadline, is today or later.`
+      : '';
 
-  return `${laneLine}
+  return `${laneLine}${todayLine}
 
 ${storiesBlock}
 
