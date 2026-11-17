@@ -1,4 +1,4 @@
-// prompt version: 11
+// prompt version: 12
 //
 // Bump the number above whenever the system prompt text below changes. ADR 0003
 // calls the prompt "the product": a version marker is what lets a run logged in
@@ -13,7 +13,7 @@ import type { TwitterUserSpec } from '../sources/types';
 import { followedAccount } from '../sources/followed';
 
 /** Mirrors the `prompt version` comment above; logged with every run so a story can be traced to its wording. */
-export const PROMPT_VERSION = 11;
+export const PROMPT_VERSION = 12;
 
 /** ADR 0003: bodies are capped so a 60-item batch has a bounded input cost. */
 export const MAX_BODY_CHARS = 2000;
@@ -156,6 +156,36 @@ SUMMARIES
   paid app, add-on, repo), what it costs if the items say, and what it exports.
   It ends with a "**Try this:**" line naming where to try it (a Hugging Face
   space, an API page, a repo, an add-on) and one asset to test it on.
+
+WRITING STYLE
+The reader wants to take in a story fast, so title, summaryShort and summaryDetail
+(and their updated forms) are written in simplified English: about halfway between
+normal news prose and ASD-STE100. It must still read as natural prose, not as a
+manual.
+- Sentences are short: 25 words at most, and most are under 20. One idea per
+  sentence. Split a long sentence instead of joining clauses with commas, dashes,
+  semicolons or brackets.
+- Use the active voice and name who did the thing: "Lighter stopped withdrawals",
+  not "withdrawals were suspended".
+- Use the plain, common word: "use" not "leverage", "cut" not "slash", "stop" not
+  "suspend", "about" not "approximately", "shows" not "underscores". No idioms and
+  no figures of speech: not "burns context", "lands squarely", "makes users whole"
+  or "worth watching".
+- Keep the technical terms, product names and numbers exactly as the sources give
+  them, and use one word for one thing through the whole story. Do not swap in a
+  synonym for variety.
+- In summaryDetail, each paragraph has one topic and two to four sentences. The
+  usual order is: what happened; how it works or the background, if needed; why it
+  matters for this lane; what to watch next.
+- Do not write filler openers such as "For ai_dev readers," or "It is worth noting
+  that". Say the point directly.
+Example of the level, for a summaryDetail paragraph:
+  Too dense: "Normally an agent like Claude Code issues tool calls sequentially, and
+  every raw result (long logs, full grep output) lands in the context window even
+  when only a small piece is useful."
+  Right: "An agent like Claude Code usually runs its tool calls one at a time. Every
+  raw result goes into the context window, even when only a small part is useful.
+  Long logs and full grep output are the usual examples."
 
 GLOSSARY
 ${GLOSSARY_RULES}
