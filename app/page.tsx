@@ -1,7 +1,7 @@
 import Feed, { type FeedFilters } from '@/components/Feed';
 import Icon from '@/components/Icon';
 import { getFeedPage } from '@/lib/db/queries';
-import { dayRange, isDay, parseDone, parseLanes, parseMinScore, parseSearch, today } from '@/lib/feed/params';
+import { dayRange, isDay, parseDone, parseLanes, parseMinScore, parsePicks, parseSearch, today } from '@/lib/feed/params';
 
 // Stories change every enrichment tick; a build-time snapshot would always be stale.
 export const dynamic = 'force-dynamic';
@@ -25,6 +25,7 @@ function parseFilters(sp: Search): FeedFilters {
   return {
     lanes: parseLanes(one(sp.lanes)).lanes,
     minScore: parseMinScore(one(sp.minScore)),
+    picks: parsePicks(one(sp.picks)),
     done: parseDone(one(sp.done)),
     from,
     to,
@@ -41,6 +42,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     const page = await getFeedPage({
       lanes: filters.lanes,
       minScore: filters.minScore,
+      picks: filters.picks,
       done: filters.done,
       since,
       until,

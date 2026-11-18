@@ -7,12 +7,14 @@
  */
 import type { Row, Sql } from 'postgres';
 import { db } from './client';
-import { searchPatterns } from '../feed/params';
+import { DEFAULT_MIN_SCORE, searchPatterns } from '../feed/params';
+import { env } from '../env';
 import {
   EXCLUDED_STORY_ID,
   isNewStoryAssignment,
   isVerdict,
   laneGroup,
+  PICKS_PER_DAY,
   type EnrichResult,
   type EventFacts,
   type FeedCursor,
@@ -360,9 +362,9 @@ export async function applyAssignments(lane: Lane, result: EnrichResult): Promis
         // back out of it (see above) must not keep them.
         const event = storyLane === 'events' && s.event ? tx.json(s.event as never) : null;
         const [row] = await tx`
-          INSERT INTO stories (lane, title, summary_short, summary_detail, score, glossary, event)
+          INSERT INTO stories (lane, title, summary_short, summary_detail, score, glossary, event, near_four)
           VALUES (${storyLane}, ${s.title}, ${s.summaryShort}, ${s.summaryDetail}, ${s.score},
-                  ${tx.json(s.glossary as never)}, ${event})
+                  ${tx.json(s.glossary as never)}, ${event}, ${s.score === 3 ? (s.nearFour ?? null) : null})
           RETURNING id::int AS id
         `;
         storyId = Number(row.id);
@@ -568,8 +570,11 @@ export async function getLastDigestAt(maxHours = 72): Promise<Date> {
 // ---- feed ----
 
 /**
- * One statement per feed page (ADR 0001). Keyset pagination on `(updated_at, id)`
- * so scrolling never skips or repeats a story when new ones land mid-scroll.
+ * One statement per feed page (ADR 0001). Newest day first; inside a day the
+ * best first (5, 4, picks, other 3s, ...), then newest change. Keyset pagination
+ * on `(day, tier, updated_at, id)` so scrolling never skips or repeats a story
+ * when new ones land mid-scroll. Sorting by score inside a day stops a lane from
+ * sitting on top only because its enrichment ran last.
  *
  * The page is one side of the done split: stories still to read by default, or
  * only the done ones with `done: true`. Every filter here, including the date
@@ -591,23 +596,44 @@ export async function getFeedPage(opts: {
   since?: Date | null;
   until?: Date | null;
   q?: string;
+  /** Also show the day's picks (best score-3 stories) when minScore is above 3. Default true. */
+  picks?: boolean;
 }): Promise<FeedPage> {
   const sql = db();
   const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
-  const minScore = opts.minScore ?? 3;
+  const minScore = opts.minScore ?? DEFAULT_MIN_SCORE;
   const lanes = opts.lanes && opts.lanes.length > 0 ? opts.lanes : null;
   const cursor = opts.cursor ?? null;
   const done = opts.done ?? false;
   const since = opts.since ?? null;
   const until = opts.until ?? null;
   const patterns = searchPatterns(opts.q ?? '');
+  const picks = opts.picks ?? true;
+  const tz = env.tz;
 
   const rows = await sql`
+    WITH picks AS (
+      -- The day's PICKS_PER_DAY best score-3 stories, by the model's near_four.
+      -- Done stories keep their slot, so marking one done never promotes another.
+      SELECT id FROM (
+        SELECT id, row_number() OVER (
+                 PARTITION BY (first_seen_at AT TIME ZONE ${tz})::date
+                 ORDER BY near_four DESC, id
+               ) AS rn
+        FROM stories WHERE score = 3 AND near_four IS NOT NULL
+      ) ranked WHERE rn <= ${PICKS_PER_DAY}
+    ), ranked AS (
+      SELECT st.*, (p.id IS NOT NULL) AS pick,
+             (st.updated_at AT TIME ZONE ${tz})::date AS feed_day,
+             CASE WHEN p.id IS NOT NULL THEN 7 ELSE st.score * 2 END AS tier
+      FROM stories st LEFT JOIN picks p ON p.id = st.id
+    )
     SELECT s.id::int AS id, s.lane, s.title, s.summary_short, s.summary_detail, s.score, s.glossary, s.products, s.event,
            s.first_seen_at, s.updated_at, s.digested_at, s.done_at,
            s.verdict, s.verdict_note, s.verdict_sources, s.verified_at,
+           s.pick, to_char(s.feed_day, 'YYYY-MM-DD') AS feed_day, s.tier::int AS tier,
            cnt.item_count, cnt.primary_url
-    FROM stories s
+    FROM ranked s
     LEFT JOIN LATERAL (
       -- One pass over the story's items for both the count and the link, ordered
       -- inside the aggregate so the article wins over the thread about it.
@@ -615,7 +641,7 @@ export async function getFeedPage(opts: {
              (array_agg(i.url ORDER BY ${bestLinkFirst(sql)}))[1] AS primary_url
       FROM items i WHERE i.story_id = s.id
     ) cnt ON true
-    WHERE s.score >= ${minScore}
+    WHERE (s.score >= ${minScore} OR (${picks} AND s.pick))
       ${done ? sql`AND s.done_at IS NOT NULL` : sql`AND s.done_at IS NULL`}
       ${lanes ? sql`AND s.lane = ANY(${sql.array(lanes)}::text[])` : sql``}
       ${since ? sql`AND s.updated_at >= ${since}` : sql``}
@@ -627,10 +653,11 @@ export async function getFeedPage(opts: {
       }
       ${
         cursor
-          ? sql`AND (s.updated_at, s.id) < (${cursor.updatedAt}::timestamptz, ${cursor.id}::bigint)`
+          ? sql`AND (s.feed_day, s.tier, s.updated_at, s.id) <
+                (${cursor.day}::date, ${cursor.tier}::int, ${cursor.updatedAt}::timestamptz, ${cursor.id}::bigint)`
           : sql``
       }
-    ORDER BY s.updated_at DESC, s.id DESC
+    ORDER BY s.feed_day DESC, s.tier DESC, s.updated_at DESC, s.id DESC
     LIMIT ${limit + 1}
   `;
 
@@ -638,12 +665,21 @@ export async function getFeedPage(opts: {
   const stories: StoryWithCount[] = page.map((r) => ({
     ...toStoryWithLink(r),
     itemCount: Number(r.item_count ?? 0),
+    pick: r.pick === true,
   }));
   // Exact because stories.updated_at is stored at millisecond precision, which is
   // all a JavaScript Date can carry. See the column comment in schema.sql.
   const last = stories[stories.length - 1];
+  const lastRow = page[page.length - 1];
   const nextCursor =
-    rows.length > limit && last ? { updatedAt: last.updatedAt.toISOString(), id: last.id } : null;
+    rows.length > limit && last && lastRow
+      ? {
+          day: lastRow.feed_day as string,
+          tier: Number(lastRow.tier),
+          updatedAt: last.updatedAt.toISOString(),
+          id: last.id,
+        }
+      : null;
 
   return { stories, nextCursor };
 }

@@ -77,6 +77,8 @@ const NEW_STORY_SCHEMA = {
     summaryShort: { type: 'string' },
     summaryDetail: { type: ['string', 'null'] },
     score: { type: 'integer', minimum: 1, maximum: 5 },
+    // Not required: only a score-3 story has one. Ranks the day's picks.
+    nearFour: { type: 'integer', minimum: 1, maximum: 10 },
     glossary: GLOSSARY_SCHEMA,
     // Not required: only a story in the events lane has one.
     event: EVENT_SCHEMA,
@@ -259,6 +261,11 @@ export function validateEnrichResult(
           glossary: sanitizeGlossary(s.glossary),
         };
         if (newStory.lane === 'events') newStory.event = sanitizeEvent(s.event);
+        // Lenient on purpose: a missing or bad nearFour only means the story is
+        // never a pick. It is not worth a retry of the whole batch.
+        if (newStory.score === 3 && isInt(s.nearFour) && s.nearFour >= 1 && s.nearFour <= 10) {
+          newStory.nearFour = s.nearFour;
+        }
         assignments.push({ itemIds, newStory });
       }
       return;

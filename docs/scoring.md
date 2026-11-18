@@ -128,12 +128,29 @@ attaches the item and leaves the score alone.
 | Threshold | Effect | Where |
 | --- | --- | --- |
 | `score >= 3` | A 150-300 word `summaryDetail` is written. Below 3 it must be `null`. | `DETAIL_MIN_SCORE` in `lib/enrich/schema.ts` |
-| `score >= 3` | Default filter for the web feed. The "min score" buttons change it. | `DEFAULT_MIN_SCORE` in `app/api/feed/route.ts`, `app/page.tsx` |
+| `score >= 4` + picks | Default filter for the web feed: every 4+ story plus the day's picks (below). The "min score" buttons and "+ picks" change it. | `DEFAULT_MIN_SCORE` in `lib/feed/params.ts`, `getFeedPage` in `lib/db/queries.ts` |
 | `score >= 4` | Story is eligible for the Discord digest, best first, 8 per lane (12 for `ai_gamedev`). | `getDigestStories` in `lib/db/queries.ts`, `digestLimit` in `lib/digest/run.ts` |
+| Feed order | Newest day first; inside a day 5, 4, picks, other 3s, then newest change. So a lane is not on top only because its enrichment ran last. | `getFeedPage` in `lib/db/queries.ts` |
 | Ordering | Open stories sent back to the model are sorted by score and capped at 150, so low scorers drop out of clustering context first. | `getOpenStories` in `lib/db/queries.ts` |
 
 The score is shown as dots in the feed (`ScoreDots` in `components/StoryCard.tsx`)
 and as `●●●○○` in Discord (`scoreMarker` in `lib/digest/discord.ts`).
+
+## Picks
+
+The reader reads almost every 4+ story but has no time for every 3: in November
+2026 there were about 37 new 3s a day, and about 2 were read. So each new story
+scored 3 also gets `nearFour` from the model, 1-10, "how close is this to a 4".
+It is stored in `stories.near_four`. The feed shows the `PICKS_PER_DAY` (6) score-3
+stories with the highest `near_four` for each day (by `first_seen_at` in `TZ`)
+next to the 4+ stories, with a **Pick** tag. The rank uses only `near_four`: not
+the lane and not what the reader marked done, because Done marks follow where a
+story sat in the feed more than what the reader likes.
+
+`nearFour` is optional in the schema. When it is missing or out of range, the
+story is not a pick; the batch is not retried. 3s from before prompt version 14
+have no `near_four` and are never picks. Picks are web-only; the Discord digest
+does not use them.
 
 ## Why it matters
 

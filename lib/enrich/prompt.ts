@@ -13,7 +13,7 @@ import type { TwitterUserSpec } from '../sources/types';
 import { followedAccount } from '../sources/followed';
 
 /** Mirrors the `prompt version` comment above; logged with every run so a story can be traced to its wording. */
-export const PROMPT_VERSION = 13;
+export const PROMPT_VERSION = 14;
 
 /** ADR 0003: bodies are capped so a 60-item batch has a bounded input cost. */
 export const MAX_BODY_CHARS = 2000;
@@ -113,6 +113,7 @@ Create a new story:
       "summaryShort": "...",
       "summaryDetail": "..." | null,   // string if score >= 3, null if score <= 2
       "score": 3,
+      "nearFour": 7,                   // only when score is 3 (see NEAR FOUR); leave out otherwise
       "glossary": [ { "term": "...", "definition": "...", "full": "..." } ],  // may be []
       "event": { ... }                 // only when lane is "events" (see EVENT FACTS)
     }
@@ -242,6 +243,16 @@ SCORE RUBRIC
 3 = worth a line: real but minor, or interesting without consequence.
 2 = noise: routine, speculative, or already well known.
 1 = noise: no information.
+
+NEAR FOUR
+Every new story you score 3 also gets "nearFour", an integer from 1 to 10: how
+close it is to a 4 for the reader of its lane. The reader reads every 4 and 5
+but only the six best 3s of each day, and this number picks them. 10 means it
+almost made 4: a fact the reader can use this week, a tool they could try today,
+or a change to how something they use works. 1 means it only just made 3:
+interesting but with no consequence for them. Use the whole range and judge each
+story on its own; do not give most stories the same number. Leave "nearFour" out
+of every story scored 1, 2, 4 or 5.
 
 UPDATING AN EXISTING STORY
 Update a story only when a new item materially changes it: a new fact, a

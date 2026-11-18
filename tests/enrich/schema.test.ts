@@ -40,6 +40,23 @@ function validate(body: unknown) {
 }
 
 describe('validateEnrichResult', () => {
+  it('keeps nearFour only on a score-3 story, and never fails a batch over it', () => {
+    const story = (score: number, nearFour: unknown) => {
+      const body = validResponse();
+      const a = (body.assignments as Array<Record<string, unknown>>)[0];
+      a.newStory = { ...(a.newStory as object), score, nearFour };
+      const result = validate(body);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return undefined;
+      const first = result.value.assignments[0];
+      return 'newStory' in first ? first.newStory.nearFour : undefined;
+    };
+    expect(story(3, 8)).toBe(8);
+    expect(story(4, 8)).toBeUndefined();
+    expect(story(3, 11)).toBeUndefined();
+    expect(story(3, 'high')).toBeUndefined();
+  });
+
   it('accepts a well-formed response', () => {
     const result = validate(validResponse());
     expect(result.ok).toBe(true);

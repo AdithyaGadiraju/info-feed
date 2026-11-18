@@ -7,9 +7,20 @@ import {
   parseDone,
   parseLanes,
   parseMinScore,
+  parsePicks,
   parseSearch,
   searchPatterns,
 } from '../../lib/feed/params';
+
+describe('parsePicks', () => {
+  it('shows picks unless told 0 or false', () => {
+    expect(parsePicks(null)).toBe(true);
+    expect(parsePicks('')).toBe(true);
+    expect(parsePicks('1')).toBe(true);
+    expect(parsePicks('0')).toBe(false);
+    expect(parsePicks(' FALSE ')).toBe(false);
+  });
+});
 
 describe('feed query-string parsers', () => {
   it('reads lanes and reports the unknown ones instead of dropping them silently', () => {
@@ -19,9 +30,9 @@ describe('feed query-string parsers', () => {
     expect(parseLanes('ai,wrestling,')).toEqual({ lanes: ['ai'], unknown: ['wrestling'] });
   });
 
-  it('clamps minScore into 1..5 and falls back to 3', () => {
-    expect(parseMinScore(null)).toBe(3);
-    expect(parseMinScore('abc')).toBe(3);
+  it('clamps minScore into 1..5 and falls back to 4', () => {
+    expect(parseMinScore(null)).toBe(4);
+    expect(parseMinScore('abc')).toBe(4);
     expect(parseMinScore('0')).toBe(1);
     expect(parseMinScore('99')).toBe(5);
     expect(parseMinScore('4')).toBe(4);

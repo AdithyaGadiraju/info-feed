@@ -524,6 +524,11 @@ export default function StoryCard({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="eyebrow">{LANE_LABELS[story.lane]}</span>
           <ScorePips score={story.score} />
+          {'pick' in story && story.pick ? (
+            <span className="tag tag-accent" title="One of the day's best score-3 stories">
+              Pick
+            </span>
+          ) : null}
           {verification ? <VerdictBadge verification={verification} outdated={outdated} /> : null}
           {story.event ? <EventCountdown event={story.event} /> : null}
           {doneAt ? <DoneTag doneAt={doneAt} /> : null}

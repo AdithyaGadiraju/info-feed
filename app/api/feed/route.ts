@@ -9,6 +9,7 @@ import {
   parseDone,
   parseLanes,
   parseMinScore,
+  parsePicks,
   parseSearch,
 } from '../../../lib/feed/params';
 
@@ -52,14 +53,18 @@ function parseCursor(raw: string | null): FeedCursor | null | { error: string } 
   try {
     const parsed: unknown = JSON.parse(atob(raw));
     if (typeof parsed !== 'object' || parsed === null) return { error: 'malformed cursor' };
-    const { updatedAt, id } = parsed as { updatedAt?: unknown; id?: unknown };
+    const { day, tier, updatedAt, id } = parsed as { day?: unknown; tier?: unknown; updatedAt?: unknown; id?: unknown };
+    if (typeof day !== 'string' || !isDay(day)) return { error: 'malformed cursor' };
+    if (typeof tier !== 'number' || !Number.isSafeInteger(tier) || tier < 0 || tier > 20) {
+      return { error: 'malformed cursor' };
+    }
     if (typeof updatedAt !== 'string' || !CURSOR_TIMESTAMP_RE.test(updatedAt)) {
       return { error: 'malformed cursor' };
     }
     if (typeof id !== 'number' || !Number.isSafeInteger(id) || id < 0) {
       return { error: 'malformed cursor' };
     }
-    return { updatedAt, id };
+    return { day, tier, updatedAt, id };
   } catch {
     return { error: 'malformed cursor' };
   }
@@ -94,7 +99,7 @@ function serverError(context: string, err: unknown): NextResponse {
  * its own route file because the expanded card needs exactly one extra shape and a
  * second route module would add a file for four lines of handler.
  *
- * Otherwise: a keyset-paginated feed page, filtered by `lanes`, `minScore`, `done`,
+ * Otherwise: a keyset-paginated feed page, filtered by `lanes`, `minScore`, `picks`, `done`,
  * a `from`..`to` window of calendar days and a `q` search (lib/feed/params.ts).
  * The cursor travels as base64 JSON, one opaque param the client hands straight back.
  */
@@ -135,10 +140,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const limit = parseIntIn(q.get('limit'), DEFAULT_LIMIT, 1, MAX_LIMIT);
   const done = parseDone(q.get('done'));
   const search = parseSearch(q.get('q'));
+  const picks = parsePicks(q.get('picks'));
 
   let page;
   try {
-    page = await getFeedPage({ lanes, minScore, cursor, limit, done, since, until, q: search });
+    page = await getFeedPage({ lanes, minScore, cursor, limit, done, since, until, q: search, picks });
   } catch (err) {
     return serverError('getFeedPage', err);
   }

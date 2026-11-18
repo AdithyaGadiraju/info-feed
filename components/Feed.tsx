@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
 import StoryCard, { reviveStory, type WireStoryWithCount } from '@/components/StoryCard';
-import { ACTIVE_LANES, LANE_LABELS, type FeedCursor, type Lane, type StoryWithCount } from '@/lib/db/types';
+import { ACTIVE_LANES, LANE_LABELS, PICKS_PER_DAY, type FeedCursor, type Lane, type StoryWithCount } from '@/lib/db/types';
 import { DEFAULT_MIN_SCORE, MAX_SEARCH_LENGTH, dayStart, formatDay, isDay } from '@/lib/feed/params';
 
 const PAGE_SIZE = 30;
@@ -19,6 +19,8 @@ const SEARCH_DEBOUNCE_MS = 300;
 export interface FeedFilters {
   lanes: Lane[];
   minScore: number;
+  /** Also show the day's picks, the best score-3 stories. Only matters when minScore is above 3. */
+  picks: boolean;
   /** The done side of the feed (`?done=1`) rather than the stories still to read. */
   done: boolean;
   /** Calendar days, `YYYY-MM-DD`, both inclusive, on the story's last change. Empty is no bound. */
@@ -43,6 +45,7 @@ function filterParams(f: FeedFilters): URLSearchParams {
   const p = new URLSearchParams();
   if (f.lanes.length > 0) p.set('lanes', f.lanes.join(','));
   if (f.minScore !== DEFAULT_MIN_SCORE) p.set('minScore', String(f.minScore));
+  if (!f.picks) p.set('picks', '0');
   if (f.done) p.set('done', '1');
   if (f.from) p.set('from', f.from);
   if (f.to) p.set('to', f.to);
@@ -93,13 +96,14 @@ function sayDay(day: string): string {
 /** One sentence naming the view, so the page says what it is showing without reading the chips. */
 function describe(f: FeedFilters, laneNames: string): string {
   const parts: string[] = [];
-  parts.push(`${f.done ? 'Marked done, score' : 'Score'} ${f.minScore}+`);
+  const withPicks = f.picks && f.minScore > 3 ? ` plus the day's ${PICKS_PER_DAY} best 3s` : '';
+  parts.push(`${f.done ? 'Marked done, score' : 'Score'} ${f.minScore}+${withPicks}`);
   parts.push(f.lanes.length > 0 ? `in ${laneNames}` : 'across every lane');
   if (f.from && f.to) parts.push(f.from === f.to ? `on ${sayDay(f.from)}` : `${sayDay(f.from)} to ${sayDay(f.to)}`);
   else if (f.from) parts.push(`since ${sayDay(f.from)}`);
   else if (f.to) parts.push(`up to ${sayDay(f.to)}`);
   if (f.q) parts.push(`matching “${f.q}”`);
-  return `${parts.join(', ')}, newest change first.`;
+  return `${parts.join(', ')}. Newest day first, best first within a day.`;
 }
 
 export interface FeedProps {
@@ -216,7 +220,7 @@ export default function Feed({ initialStories, initialCursor, initialFilters, to
     return () => io.disconnect();
   }, [load]);
 
-  const { lanes, minScore, done: showDone, from, to, q } = filters;
+  const { lanes, minScore, picks, done: showDone, from, to, q } = filters;
   const set = (patch: Partial<FeedFilters>) => applyFilters({ ...filters, ...patch });
 
   const toggleLane = (lane: Lane) => {
@@ -299,6 +303,12 @@ export default function Feed({ initialStories, initialCursor, initialFilters, to
               <span className="tnum">{s}+</span>
             </label>
           ))}
+          {minScore > 3 ? (
+            <label className="chip" title={`The ${PICKS_PER_DAY} best score-3 stories of each day`}>
+              <input type="checkbox" checked={picks} onChange={() => set({ picks: !picks })} />
+              <span>+ picks</span>
+            </label>
+          ) : null}
         </fieldset>
         {/* Done is a second list, not a filter on this one: a story is on exactly one side. */}
         <fieldset className="chips">
@@ -412,7 +422,7 @@ export default function Feed({ initialStories, initialCursor, initialFilters, to
               className="btn btn-secondary mt-2"
               onClick={() => {
                 setQInput('');
-                applyFilters({ lanes: [], minScore: 1, done: showDone, from: '', to: '', q: '' });
+                applyFilters({ lanes: [], minScore: 1, picks: true, done: showDone, from: '', to: '', q: '' });
               }}
             >
               {showDone ? 'Show every done story' : 'Show every story'}

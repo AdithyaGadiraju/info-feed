@@ -268,7 +268,15 @@ export interface StoryWithLink extends Story {
 /** A story plus the count of items behind it, for feed cards. */
 export interface StoryWithCount extends StoryWithLink {
   itemCount: number;
+  /** One of its day's `PICKS_PER_DAY` best score-3 stories (by `near_four`). */
+  pick: boolean;
 }
+
+/**
+ * Score-3 stories promoted into the default feed each day, ranked by the model's
+ * `nearFour`. The day is the calendar day of `first_seen_at` in `TZ`.
+ */
+export const PICKS_PER_DAY = 6;
 
 /** A story plus its sources, for the expanded card and the permalink page. */
 export interface StoryWithItems extends StoryWithLink {
@@ -300,8 +308,14 @@ export interface RunRow {
   error: string | null;
 }
 
-/** Cursor for the feed's infinite scroll: keyset on (updated_at, id). */
+/**
+ * Cursor for the feed's infinite scroll: keyset on (day, tier, updated_at, id).
+ * `day` is the `YYYY-MM-DD` of updated_at in `TZ`; `tier` ranks a story inside
+ * its day (score 5 = 10, 4 = 8, pick = 7, other 3 = 6, 2 = 4, 1 = 2).
+ */
 export interface FeedCursor {
+  day: string;
+  tier: number;
   updatedAt: string;
   id: number;
 }
@@ -321,6 +335,8 @@ export interface NewStoryInput {
   summaryShort: string;
   summaryDetail: string | null;
   score: Score;
+  /** 1-10, how close a score-3 story is to a 4. Only kept when score is 3. */
+  nearFour?: number | null;
   glossary: GlossaryTerm[];
   /** Stored only when the story lands in the events lane. */
   event?: EventFacts | null;

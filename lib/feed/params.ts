@@ -2,15 +2,15 @@
  * The feed's query-string contract, shared by `/api/feed` (strict: a bad value is
  * a 400) and the home page (lenient: a bad value falls back to its default, so a
  * stale link still renders). The client omits every param at its default, so `/`
- * and `/api/feed` with no params are the same view: score 3+, every lane, still
- * to read, any time, no search.
+ * and `/api/feed` with no params are the same view: score 4+ plus the day's
+ * picks, every lane, still to read, any time, no search.
  *
  * Pure functions with no Next or database imports, so vitest covers them without
  * either.
  */
 import { isLane, type Lane } from '../db/types';
 
-export const DEFAULT_MIN_SCORE = 3;
+export const DEFAULT_MIN_SCORE = 4;
 /** Longer than any query a person types; keeps a pasted novel out of the ILIKE. */
 export const MAX_SEARCH_LENGTH = 200;
 /** Each word becomes one ILIKE pattern; eight is plenty and bounds the statement. */
@@ -32,6 +32,16 @@ export function parseMinScore(raw: string | null): number {
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n)) return DEFAULT_MIN_SCORE;
   return Math.min(Math.max(n, 1), 5);
+}
+
+/**
+ * `picks=0` (or `false`) hides the day's picks, the best score-3 stories that
+ * the default view shows beside the 4+ ones. Anything else means show them.
+ */
+export function parsePicks(raw: string | null): boolean {
+  if (raw === null) return true;
+  const v = raw.trim().toLowerCase();
+  return !(v === '0' || v === 'false');
 }
 
 /**

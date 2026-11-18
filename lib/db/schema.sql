@@ -132,3 +132,7 @@ CREATE INDEX IF NOT EXISTS stories_products_pending_idx ON stories (updated_at D
 -- into the digest ahead of its deadline (remindUpcomingEvents); NULL means not yet.
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS event             jsonb;
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS event_reminded_at timestamptz;
+-- Picks (lib/enrich, getFeedPage). For a new score-3 story the model rates how
+-- close it is to a 4, 1-10. The feed shows the day's PICKS_PER_DAY best of them
+-- beside the 4+ stories. NULL on every other story, and on 3s from before this.
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS near_four smallint CHECK (near_four BETWEEN 1 AND 10);
