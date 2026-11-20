@@ -1,32 +1,27 @@
 /**
- * Digest orchestration for one lane (ADR 0004). Lane ordering and header/footer
- * sequencing across lanes belong to the script that calls this module; this file
+ * Digest orchestration for one lane (ADR 0004). A digest picks a lane's best new
+ * stories, fact-checks them and marks them digested. It used to post them to
+ * Discord too; that was removed on 2026-11-20 and the web feed is now the only
+ * reader. Lane ordering belongs to the script that calls this module; this file
  * only knows how to do one lane at a time, and writes the `runs` row for it.
  */
 import { finishRun, getDigestStories, recordDigest, remindUpcomingEvents, startRun } from '../db/queries';
 import type { Lane, StoryWithLink } from '../db/types';
-import { env } from '../env';
 import { verifyStories, type VerifyResult } from '../verify/run';
-import { postLane, type PostResult } from './discord';
 
 export interface DigestLaneResult {
-  sent: number;
-  ok: boolean;
-  status: number;
+  /** Stories selected, fact-checked and marked digested. */
+  digested: number;
 }
 
 export interface DigestLaneDeps {
-  /** Injectable so tests can force a non-2xx without a fake network layer. */
-  poster?: (lane: Lane, stories: StoryWithLink[]) => Promise<PostResult>;
   /** Injectable so tests never start a model call. */
   verifier?: (lane: Lane, stories: StoryWithLink[]) => Promise<VerifyResult>;
   /**
    * Stories already selected and fact-checked by `prepareLane`. `npm run digest`
-   * passes this so the slow part can run for every lane at once while the posts
-   * still go out in lane order.
+   * passes this so the slow part can run for every lane at once.
    */
   prepared?: StoryWithLink[];
-  now?: Date;
 }
 
 function errorText(err: unknown): string {
@@ -36,13 +31,8 @@ function errorText(err: unknown): string {
 /**
  * `runs` is the system's only observability (ADR 0001), so a lane that fails has
  * to leave a row behind — but the row is a record of the work, never the work
- * itself. If the runs table is unreachable, the digest still goes out and the
+ * itself. If the runs table is unreachable, the digest still happens and the
  * failure is downgraded to a console line.
- *
- * `withRun` from the query layer is deliberately not used here: it decides ok/fail
- * by whether the callback threw, and a digest lane reports a non-2xx by returning,
- * not by throwing. Driving `startRun`/`finishRun` directly is what lets a 500 from
- * Discord land as `ok = false`.
  */
 async function openRun(job: string): Promise<number | null> {
   try {
@@ -67,11 +57,11 @@ async function closeRun(
   }
 }
 
-/** Stories a digest posts per lane, best first. */
+/** Stories a digest takes per lane, best first. */
 const DIGEST_LIMIT = 8;
 
 /**
- * Lanes that post more than `DIGEST_LIMIT`. ai_gamedev is where Gadi wants every
+ * Lanes that take more than `DIGEST_LIMIT`. ai_gamedev is where Gadi wants every
  * new tool, niche ones included, and a busy release week fills 8 slots with the
  * big vendors alone.
  */
@@ -80,7 +70,7 @@ const DIGEST_LIMIT_BY_LANE: Partial<Record<Lane, number>> = { ai_gamedev: 12 };
 /**
  * Puts events whose deadline is near back into the selection (and at the top of
  * the web feed). A failure here only costs the reminder, so it never stops the
- * lane: the new announcements still go out.
+ * lane.
  */
 async function remindEvents(): Promise<void> {
   try {
@@ -108,8 +98,8 @@ export async function prepareLane(lane: Lane, deps: DigestLaneDeps = {}): Promis
 }
 
 /**
- * Selects, fact-checks, posts, and marks one lane. `digested_at` is only touched after a 2xx
- * (ADR 0004) so a failed post leaves the same stories eligible for the next run.
+ * Selects, fact-checks and marks one lane. Marking means the next digest skips
+ * these stories (and so does not pay to fact-check them again) until one changes.
  */
 export async function digestLane(lane: Lane, deps: DigestLaneDeps = {}): Promise<DigestLaneResult> {
   const runId = await openRun(`digest:${lane}`);
@@ -118,57 +108,11 @@ export async function digestLane(lane: Lane, deps: DigestLaneDeps = {}): Promise
   try {
     const stories = deps.prepared ?? (await prepareLane(lane, deps)).stories;
     selected = stories.length;
-
-    if (stories.length === 0) {
-      // Nothing new: skip the post entirely rather than sending an empty lane message.
-      await closeRun(runId, true, { lane, selected: 0, sent: 0, discordStatus: 0 });
-      return { sent: 0, ok: true, status: 0 };
-    }
-
-    const poster = deps.poster ?? ((l, s) => postLane(l, s, { now: deps.now }));
-    const result = await poster(lane, stories);
-
-    if (result.ok) {
-      await recordDigest(lane, stories.map((s) => s.id), result.status);
-    }
-
-    await closeRun(
-      runId,
-      result.ok,
-      { lane, selected, sent: result.ok ? selected : 0, discordStatus: result.status },
-      result.ok ? null : `discord returned ${result.status}`,
-    );
-
-    return { sent: stories.length, ok: result.ok, status: result.status };
+    if (stories.length > 0) await recordDigest(lane, stories.map((s) => s.id));
+    await closeRun(runId, true, { lane, selected, digested: selected });
+    return { digested: selected };
   } catch (err) {
-    await closeRun(runId, false, { lane, selected, sent: 0 }, errorText(err));
+    await closeRun(runId, false, { lane, selected, digested: 0 }, errorText(err));
     throw err;
   }
-}
-
-function inTz(now: Date, tz: string): { date: string; time: string } {
-  const date = new Intl.DateTimeFormat('en-US', { timeZone: tz, day: 'numeric', month: 'short' }).format(
-    now,
-  );
-  const time = new Intl.DateTimeFormat('en-GB', {
-    timeZone: tz,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(now);
-  return { date, time };
-}
-
-/** First message of a run (ADR 0004): makes the start of a run visible before any lane lands. */
-export function digestHeader(laneCount: number, now: Date): string {
-  const { date, time } = inTz(now, env.tz);
-  return `Digest · ${date} ${time} · ${laneCount} lane${laneCount === 1 ? '' : 's'}`;
-}
-
-/** Final message of a run: names lanes with nothing new and any lane whose post failed. */
-export function digestFooter(quietLanes: Lane[], failedLanes: Lane[]): string {
-  const parts: string[] = [];
-  if (quietLanes.length > 0) parts.push(`nothing new: ${quietLanes.join(', ')}`);
-  if (failedLanes.length > 0) parts.push(`failed: ${failedLanes.join(', ')}`);
-  return parts.length > 0 ? parts.join(' · ') : 'all lanes posted';
 }

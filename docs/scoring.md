@@ -1,7 +1,7 @@
 # Story score
 
 Every story carries a score from 1 to 5. It is the single signal that decides what
-you see, what gets posted to Discord, and what the model spends output tokens on.
+you see, what gets fact-checked, and what the model spends output tokens on.
 
 ## Where it comes from
 
@@ -129,12 +129,11 @@ attaches the item and leaves the score alone.
 | --- | --- | --- |
 | `score >= 3` | A 150-300 word `summaryDetail` is written. Below 3 it must be `null`. | `DETAIL_MIN_SCORE` in `lib/enrich/schema.ts` |
 | `score >= 4` + picks | Default filter for the web feed: every 4+ story plus the day's picks (below). The "min score" buttons and "+ picks" change it. | `DEFAULT_MIN_SCORE` in `lib/feed/params.ts`, `getFeedPage` in `lib/db/queries.ts` |
-| `score >= 4` | Story is eligible for the Discord digest, best first, 8 per lane (12 for `ai_gamedev`). | `getDigestStories` in `lib/db/queries.ts`, `digestLimit` in `lib/digest/run.ts` |
+| `score >= 4` | Story is eligible for the digest's fact-check, best first, 8 per lane (12 for `ai_gamedev`). | `getDigestStories` in `lib/db/queries.ts`, `digestLimit` in `lib/digest/run.ts` |
 | Feed order | Newest day first; inside a day 5, 4, picks, other 3s, then newest change. So a lane is not on top only because its enrichment ran last. | `getFeedPage` in `lib/db/queries.ts` |
 | Ordering | Open stories sent back to the model are sorted by score and capped at 150, so low scorers drop out of clustering context first. | `getOpenStories` in `lib/db/queries.ts` |
 
-The score is shown as dots in the feed (`ScoreDots` in `components/StoryCard.tsx`)
-and as `●●●○○` in Discord (`scoreMarker` in `lib/digest/discord.ts`).
+The score is shown as dots in the feed (`ScoreDots` in `components/StoryCard.tsx`).
 
 ## Picks
 
@@ -149,7 +148,7 @@ story sat in the feed more than what the reader likes.
 
 `nearFour` is optional in the schema. When it is missing or out of range, the
 story is not a pick; the batch is not retried. 3s from before prompt version 14
-have no `near_four` and are never picks. Picks are web-only; the Discord digest
+have no `near_four` and are never picks. Picks are not fact-checked; the digest
 does not use them.
 
 ## Why it matters

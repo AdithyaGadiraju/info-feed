@@ -2,7 +2,7 @@
   "name": "info-feed",
   "version": "1.0.0",
   "private": true,
-  "description": "Personal multi-lane news digest: ingests free sources, enriches with Claude, posts to Discord and serves a live feed.",
+  "description": "Personal multi-lane news digest: ingests free sources, enriches with Claude and serves a live feed.",
   "type": "module",
   "engines": {
     "node": ">=22"

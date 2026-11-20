@@ -8,7 +8,6 @@ import {
   eventCountdown,
   eventDaysLeft,
   eventIsSoon,
-  eventLine,
   formatEventDay,
   formatEventDeadline,
   formatEventWhen,
@@ -92,23 +91,5 @@ describe('counting down', () => {
     expect(eventIsSoon(facts(), sydney('2026-11-16'), TZ)).toBe(true);
     expect(eventIsSoon(facts(), sydney('2026-11-19'), TZ)).toBe(true);
     expect(eventIsSoon(facts(), sydney('2026-11-20'), TZ)).toBe(false);
-  });
-});
-
-describe('eventLine', () => {
-  it('lists the facts in one line, with no countdown while the deadline is far', () => {
-    expect(eventLine(facts(), sydney('2026-10-23'), TZ)).toBe(
-      'Game jam · 12-19 Nov 2026 · Online + San Francisco · Submit by 19 Nov 2026 · Free · US$50k pool',
-    );
-  });
-
-  it('adds the countdown inside the reminder window', () => {
-    expect(eventLine(facts(), sydney('2026-11-17'), TZ)).toContain('Submit by 19 Nov 2026 (closes in 2 days)');
-  });
-
-  it('leaves out what is not known', () => {
-    const bare = facts({ where: null, cost: null, prize: null, ends: null, deadline: null, deadlineLabel: null });
-    expect(eventLine(bare, sydney('2026-10-23'), TZ)).toBe('Game jam · 12 Nov 2026');
-    expect(eventLine(bare, sydney('2026-11-11'), TZ)).toBe('Game jam · 12 Nov 2026 · Starts tomorrow');
   });
 });

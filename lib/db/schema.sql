@@ -54,7 +54,8 @@ CREATE INDEX IF NOT EXISTS stories_lane_idx   ON stories (lane, score DESC, upda
 -- Digest selection: undigested or updated since the last digest.
 CREATE INDEX IF NOT EXISTS stories_digest_idx ON stories (lane, score DESC, digested_at);
 
--- One row per Discord message actually delivered.
+-- One row per lane digest: the stories it picked and fact-checked. discord_status
+-- is the HTTP status of the old Discord post (removed 2026-11-20); new rows hold 0.
 CREATE TABLE IF NOT EXISTS digests (
   id             bigserial PRIMARY KEY,
   sent_at        timestamptz NOT NULL DEFAULT now(),

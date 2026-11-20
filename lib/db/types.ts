@@ -19,7 +19,7 @@ export function isPausedLane(lane: Lane): boolean {
 }
 
 /**
- * Human labels for the web chips, story badges and Discord embed titles. The lane
+ * Human labels for the web chips and story badges. The lane
  * id is also a Postgres value, a URL token, a CSS token and an env-var suffix, so
  * it never changes once data exists; this map is the only place a lane is renamed.
  */
@@ -278,6 +278,13 @@ export interface StoryWithCount extends StoryWithLink {
  */
 export const PICKS_PER_DAY = 6;
 
+/**
+ * Most stories a lane may show per day in the all-lanes scroll, best first. For
+ * lanes the reader wants only the top of (set 2026-11-20: a daily top 3 of
+ * general AI news, games and events cut down). Filtering to one lane shows all.
+ */
+export const LANE_DAILY_CAP: Partial<Record<Lane, number>> = { ai: 3, games: 3, events: 2 };
+
 /** A story plus its sources, for the expanded card and the permalink page. */
 export interface StoryWithItems extends StoryWithLink {
   items: Array<Pick<Item, 'id' | 'source' | 'url' | 'title' | 'author' | 'engagement' | 'publishedAt'>>;
@@ -288,6 +295,7 @@ export interface DigestRow {
   sentAt: Date;
   lane: Lane;
   storyIds: number[];
+  /** HTTP status of the old Discord post; 0 for digests after Discord was removed. */
   discordStatus: number;
 }
 

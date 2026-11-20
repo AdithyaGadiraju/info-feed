@@ -4,8 +4,9 @@ A personal news digest across eight lanes: **ai** (AI News), **ai_dev** (AI Dev)
 
 It ingests free sources (RSS, Reddit, Hacker News, Hugging Face, GitHub, Steam, crypto prices, and optionally
 Twitter), uses one Claude call per lane to cluster the raw items into stories with a
-short summary and a 1–5 score, posts the good ones to Discord lane by lane, and serves
-a live scrolling feed behind basic auth.
+short summary and a 1–5 score, fact-checks the best ones, and serves a live
+scrolling feed behind basic auth. (It used to post a digest to Discord too; that was
+removed on 2026-11-20. The web feed is the only place to read it.)
 
 The three AI lanes split by audience. **ai** (labelled "AI News") is the industry: labs,
 models, research, policy. **ai_dev** (labelled "AI Dev") is for building with agentic
@@ -32,14 +33,15 @@ Three entrypoints, one package, one database.
 
 | Command | What it does |
 | --- | --- |
-| `npm run digest` | The main one. Runs the whole pipeline once, posts lane by lane, and exits. |
+| `npm run digest` | The main one. Runs the whole pipeline once, lane by lane, and exits. |
 | `npm run worker` | Optional. Same jobs on a schedule, for when a machine is left running. |
 | `npm run dev` | The live feed at `http://localhost:$PORT`. |
 
 `npm run digest` assumes no machine is always on. For each lane it ingests that lane's
-sources, enriches the pending items into stories, fact-checks the stories it is about
-to post, and posts that lane's Discord message. Lanes are posted in order, each as soon
-as it is ready, so you can start reading while later lanes are still running.
+sources, enriches the pending items into stories, then fact-checks that lane's best
+new stories (score 4+) and marks them digested, so the next run does not check them
+again. A lane shows up in the web feed as soon as it is enriched, so you can start
+reading while later lanes are still running.
 
 The lanes overlap. Ingestion runs one lane at a time, because Reddit limits requests
 per address, but each lane's model work starts as soon as its ingestion ends and runs
@@ -71,7 +73,7 @@ Show → Done, where **Undo** brings it back. Done is stored on the story
 (`stories.done_at`), so it follows you between phone and desktop. When enrichment
 rewrites a done story's summary or score it comes back as unread, because what you
 read is not what the story says any more; a story that merely gains more sources stays
-done. The Discord digest ignores done entirely.
+done. The digest's fact-check ignores done entirely.
 
 ## Setup
 
@@ -130,7 +132,6 @@ Copy `.env.example` and fill it in. Required:
 | Variable | Notes |
 | --- | --- |
 | `DATABASE_URL` | Supavisor **pooler** string, transaction mode. |
-| `DISCORD_WEBHOOK_URL` | Main channel. Always receives every lane. |
 | `FEED_USER`, `FEED_PASS` | Basic auth for the web feed. Only safe over HTTPS. |
 | `TZ` | Digest schedule and rendered timestamps. Default `Australia/Sydney`. |
 
@@ -138,8 +139,6 @@ Optional:
 
 | Variable | Notes |
 | --- | --- |
-| `DISCORD_WEBHOOK_URL_<LANE>` | Mirrors that lane to a second channel **in addition to** the main one, never instead of it. `<LANE>` is `AI`, `AI_DEV`, `AI_GAMEDEV`, `MARKETS`, `BETTING`, `GAMEDEV` or `GAMES`. |
-| `FEED_BASE_URL` | Where the story links in Discord point. Defaults to `http://localhost:3005`. |
 | `PORT` | Port for `next start`. |
 | `RETTIWT_API_KEY` | Twitter. Leave empty to skip it entirely, which is the v1 default. |
 | `GITHUB_TOKEN` | GitHub repository search. A token with no scopes raises the limit from 10 to 30 searches a minute; without one the source searches unauthenticated, 6.5 s apart. |
@@ -147,8 +146,7 @@ Optional:
 
 ## Fact-check
 
-Every story in a digest is checked against the web before it is posted
-(`lib/verify/`). One model call per story searches for the claim and for any response
+Every story in a digest is checked against the web (`lib/verify/`). One model call per story searches for the claim and for any response
 to it, then returns a verdict, a one-line note and the pages it relied on. All of a
 lane's stories are checked at once.
 
@@ -158,10 +156,9 @@ lane's stories are checked at once.
 | Unconfirmed | A single report, unnamed sources, a leak or a rumour. Nothing contradicts it, and nobody with direct knowledge has confirmed it. Also the verdict when the search finds nothing either way. |
 | Disputed | Someone with direct knowledge has denied or contradicted the central claim on the record. |
 | False | Retracted by its originator, or shown not to have happened. |
-| Unchecked | The check failed or timed out. The story is posted anyway. |
+| Unchecked | The check failed or timed out. The story is shown anyway. |
 
-The verdict appears under the summary in Discord with the note and a source link, and
-as a badge on the story in the web feed. Disputed and False always carry the page that
+The verdict appears as a badge on the story in the web feed. Disputed and False always carry the page that
 says so. Only digest stories (score 4+) are checked, so most of the web feed has no
 verdict.
 
@@ -242,8 +239,8 @@ billed, it draws on the Claude subscription's rate-limit window instead.
 
 **The fact-check is not in the figures above, and it costs more than enrichment.**
 Measured on 2026-10-07: three checks cost $0.08, $0.08 and $0.12 and took 19-31s each.
-A digest posts up to 8 stories per lane (12 for `ai_gamedev`), so a full run is up
-to 60 checks, about $5-7 on top. A typical run posts far fewer. `VERIFY_STORIES=off` removes the cost.
+A digest checks up to 8 stories per lane (12 for `ai_gamedev`), so a full run is up
+to 60 checks, about $5-7 on top. A typical run checks far fewer. `VERIFY_STORIES=off` removes the cost.
 
 ## LLM transport
 
@@ -275,7 +272,7 @@ lib/sources/           one file per source, plus index.ts (runner + pre-filter)
 lib/fetchBody.ts       readable-text extraction for link items
 lib/enrich/            prompt, schema, transport, run  <- clustering, summaries, scores
 lib/verify/            prompt, schema, run  <- the fact-check, one web-search call per digest story
-lib/digest/            Discord formatting and sending
+lib/digest/            picks and fact-checks each lane's best new stories
 scripts/digest.ts      the on-command pipeline
 worker/index.ts        the optional scheduler
 app/, components/      the Next.js feed
@@ -316,7 +313,7 @@ another service's files, ports or config.
    npm ci
    ```
 2. **Environment.** Copy `.env.example` to `.env` and fill it in. Set `LLM_TRANSPORT=api`,
-   a real `FEED_PASS`, `FEED_BASE_URL` to the public HTTPS URL, and a `PORT` that nothing
+   a real `FEED_PASS`, and a `PORT` that nothing
    else on the box is using. Check first:
    ```bash
    ss -tlnp | grep -w <port>     # must print nothing
@@ -336,7 +333,7 @@ another service's files, ports or config.
    terminate TLS at the proxy with a real certificate, or bind the app to `127.0.0.1`
    and reach it through an SSH tunnel. Never expose it on port 80.
 8. **Verify.** `curl -I https://<host>/` returns 401, and with `-u "$FEED_USER:$FEED_PASS"`
-   returns 200. Then run one `npm run digest -- --since 6` and confirm the Discord post.
+   returns 200. Then run one `npm run digest -- --since 6` and confirm new stories appear in the feed.
 
 ### Operating it
 

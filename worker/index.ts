@@ -16,8 +16,7 @@ import { sourcesConfig } from '../config/sources';
 import { ingest } from '../lib/sources/index';
 import { enrichLane } from '../lib/enrich/run';
 import { explainNewStories } from '../lib/explain/run';
-import { digestFooter, digestHeader, digestLane } from '../lib/digest/run';
-import { postFooter, postHeader } from '../lib/digest/discord';
+import { digestLane } from '../lib/digest/run';
 
 const INGEST_CRON = '*/30 * * * *';
 const DIGEST_CRON = '0 8,18 * * *';
@@ -106,21 +105,18 @@ async function runEnrich(minPending = 1): Promise<void> {
   }
 }
 
+/** Picks and fact-checks each lane's best new stories. Nothing is sent anywhere. */
 async function runDigest(): Promise<void> {
-  const now = new Date();
-  await postHeader(digestHeader(lanes.length, now));
-  const quiet: Lane[] = [];
   const failed: Lane[] = [];
+  let digested = 0;
   for (const lane of lanes) {
     try {
-      const result = await digestLane(lane);
-      if (!result.ok) failed.push(lane);
-      else if (result.sent === 0) quiet.push(lane);
+      digested += (await digestLane(lane)).digested;
     } catch {
       failed.push(lane);
     }
   }
-  await postFooter(digestFooter(quiet, failed));
+  console.log(`  digest: ${digested} stories${failed.length ? `, failed: ${failed.join(', ')}` : ''}`);
 }
 
 async function main(): Promise<void> {

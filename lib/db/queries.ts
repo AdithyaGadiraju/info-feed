@@ -15,6 +15,7 @@ import {
   isVerdict,
   laneGroup,
   PICKS_PER_DAY,
+  LANE_DAILY_CAP,
   type EnrichResult,
   type EventFacts,
   type FeedCursor,
@@ -480,14 +481,14 @@ export async function remindUpcomingEvents(days = EVENT_REMINDER_DAYS): Promise<
 }
 
 /**
- * Called only after a 2xx from Discord. Marking and recording are one transaction
- * so a story can never be marked digested without a `digests` row explaining it.
+ * Marks a lane's digest stories. Marking and recording are one transaction so a
+ * story can never be marked digested without a `digests` row explaining it.
+ *
+ * `digests.discord_status` is left over from when digests were posted to Discord
+ * (removed 2026-11-20). Older rows hold the HTTP status of that post; new rows
+ * hold 0, meaning nothing was sent.
  */
-export async function recordDigest(
-  lane: Lane,
-  storyIds: number[],
-  discordStatus: number,
-): Promise<void> {
+export async function recordDigest(lane: Lane, storyIds: number[]): Promise<void> {
   const sql = db();
   await sql.begin(async (tx) => {
     if (storyIds.length > 0) {
@@ -498,7 +499,7 @@ export async function recordDigest(
     }
     await tx`
       INSERT INTO digests (lane, story_ids, discord_status)
-      VALUES (${lane}, ${tx.json(storyIds as never)}, ${discordStatus})
+      VALUES (${lane}, ${tx.json(storyIds as never)}, 0)
     `;
   });
 }
@@ -556,11 +557,15 @@ export async function setVerification(
   return { ...v, checkedAt: (row?.verified_at as Date | undefined) ?? new Date() };
 }
 
-/** Default `--since` for `npm run digest`: the last successful digest, capped at 72 h. */
+/**
+ * Default `--since` for `npm run digest`: the last digest, capped at 72 h. Every
+ * row is a completed digest: in the Discord days a row was only written after a
+ * 2xx, and now it is written when the lane is marked.
+ */
 export async function getLastDigestAt(maxHours = 72): Promise<Date> {
   const sql = db();
   const rows = await sql`
-    SELECT max(sent_at) AS last FROM digests WHERE discord_status BETWEEN 200 AND 299
+    SELECT max(sent_at) AS last FROM digests
   `;
   const cap = new Date(Date.now() - maxHours * 3600_000);
   const last = rows[0]?.last as Date | null;
@@ -622,11 +627,18 @@ export async function getFeedPage(opts: {
                ) AS rn
         FROM stories WHERE score = 3 AND near_four IS NOT NULL
       ) ranked WHERE rn <= ${PICKS_PER_DAY}
-    ), ranked AS (
+    ), tiered AS (
       SELECT st.*, (p.id IS NOT NULL) AS pick,
              (st.updated_at AT TIME ZONE ${tz})::date AS feed_day,
              CASE WHEN p.id IS NOT NULL THEN 7 ELSE st.score * 2 END AS tier
       FROM stories st LEFT JOIN picks p ON p.id = st.id
+    ), ranked AS (
+      -- Rank inside each lane's day for LANE_DAILY_CAP. Done stories keep their
+      -- slot, as with picks, so marking one done never promotes another.
+      SELECT t.*, row_number() OVER (
+               PARTITION BY t.lane, t.feed_day ORDER BY t.tier DESC, t.updated_at DESC, t.id DESC
+             ) AS lane_rn
+      FROM tiered t
     )
     SELECT s.id::int AS id, s.lane, s.title, s.summary_short, s.summary_detail, s.score, s.glossary, s.products, s.event,
            s.first_seen_at, s.updated_at, s.digested_at, s.done_at,
@@ -643,7 +655,11 @@ export async function getFeedPage(opts: {
     ) cnt ON true
     WHERE (s.score >= ${minScore} OR (${picks} AND s.pick))
       ${done ? sql`AND s.done_at IS NOT NULL` : sql`AND s.done_at IS NULL`}
-      ${lanes ? sql`AND s.lane = ANY(${sql.array(lanes)}::text[])` : sql``}
+      ${
+        lanes
+          ? sql`AND s.lane = ANY(${sql.array(lanes)}::text[])`
+          : sql`AND s.lane_rn <= COALESCE((${sql.json(LANE_DAILY_CAP as never)}::jsonb ->> s.lane)::int, 2147483647)`
+      }
       ${since ? sql`AND s.updated_at >= ${since}` : sql``}
       ${until ? sql`AND s.updated_at < ${until}` : sql``}
       ${

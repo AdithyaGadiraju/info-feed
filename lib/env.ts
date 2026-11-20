@@ -34,16 +34,6 @@ export const env = {
   get tz(): string {
     return str('TZ', 'Australia/Sydney');
   },
-  get discordWebhook(): string | undefined {
-    return opt('DISCORD_WEBHOOK_URL');
-  },
-  /** Optional per-lane mirror. The main webhook always receives the lane as well. */
-  discordLaneWebhook(lane: string): string | undefined {
-    return opt(`DISCORD_WEBHOOK_URL_${lane.toUpperCase()}`);
-  },
-  get feedBaseUrl(): string {
-    return str('FEED_BASE_URL', 'http://localhost:3005').replace(/\/+$/, '');
-  },
   get feedUser(): string | undefined {
     return opt('FEED_USER');
   },
@@ -80,7 +70,7 @@ export const env = {
   get llmConcurrency(): number {
     return Math.max(1, Math.floor(num('LLM_CONCURRENCY', 8)));
   },
-  /** Fact-check digest stories with web search before posting them. `off` disables it. */
+  /** Fact-check digest stories (score 4+) with web search. `off` disables it. */
   get verifyStories(): boolean {
     return str('VERIFY_STORIES', 'on').toLowerCase() !== 'off';
   },

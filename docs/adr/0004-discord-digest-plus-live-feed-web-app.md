@@ -1,5 +1,7 @@
 # ADR 0004: Twice-daily Discord digest plus a basic-auth Next.js live feed, both reading the stories table
 
+> **Update 2026-11-20:** the Discord half of this ADR is retired. The digest no longer posts anywhere; it still selects score 4+ stories, fact-checks them and marks them `digested_at`, and the web feed is the only reader. `lib/digest/discord.ts` and the `DISCORD_WEBHOOK_URL*` variables were removed. The `digests.discord_status` column stays for old rows; new rows hold 0.
+
 - Status: Accepted
 - Date: 2026-09-12
 - Deciders: Gadi + Claude

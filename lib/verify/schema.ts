@@ -9,7 +9,7 @@ import { VERDICTS, isVerdict, type Verification, type VerificationSource } from 
 export const MAX_NOTE_CHARS = 300;
 export const MAX_SOURCES = 3;
 const MAX_SOURCE_TITLE_CHARS = 150;
-/** A longer URL is almost always a tracking redirect, and it would crowd a Discord line. */
+/** A longer URL is almost always a tracking redirect, and it would crowd the story card. */
 const MAX_SOURCE_URL_CHARS = 400;
 
 export const VERIFY_JSON_SCHEMA = {

@@ -2,9 +2,9 @@
  * `npm run digest` — the primary way info-feed is used (ADR 0001).
  *
  * No machine is assumed to be always on, so this runs the whole pipeline once and
- * exits. It streams: lanes are posted to Discord in order, each as soon as it is
- * ready, so reading can begin while later lanes are still running (ADR 0004). It
- * holds no source or LLM logic of its own.
+ * exits. Each lane's stories land in the web feed as soon as that lane is
+ * enriched. It holds no source or LLM logic of its own. (It used to post each lane
+ * to Discord too; that was removed on 2026-11-20.)
  *
  * The lanes overlap. Ingestion still runs one lane at a time, but a lane's model
  * work (enrichment, then the fact-check of its digest stories) starts the moment
@@ -22,8 +22,7 @@ import { sourcesConfig } from '../config/sources';
 import { ingest } from '../lib/sources/index';
 import { enrichLane } from '../lib/enrich/run';
 import { explainNewStories } from '../lib/explain/run';
-import { digestFooter, digestHeader, digestLane, prepareLane } from '../lib/digest/run';
-import { postFooter, postHeader } from '../lib/digest/discord';
+import { digestLane, prepareLane } from '../lib/digest/run';
 
 const MAX_SINCE_HOURS = 72;
 
@@ -47,7 +46,7 @@ function parseArgs(argv: string[]): Args {
         throw new Error(`unknown lane(s): ${bad.join(', ')}. Valid: ${LANES.join(', ')}`);
       }
       // Keep the configured order rather than the order they were typed, so the
-      // Discord messages always arrive in the same sequence. Naming a paused lane
+      // log always lists lanes in the same sequence. Naming a paused lane
       // explicitly runs it anyway; only the default run skips it.
       const wanted = new Set(names);
       lanes = LANES.filter((l) => wanted.has(l));
@@ -76,7 +75,8 @@ interface LaneOutcome {
   /** Digest stories that got a fact-check verdict in this run. */
   checked: number;
   costUsd: number;
-  posted: number;
+  /** Stories selected, fact-checked and marked digested. */
+  digested: number;
   error?: string;
 }
 
@@ -98,14 +98,14 @@ function serialQueue(): <T>(task: () => Promise<T>) => Promise<T> {
 
 interface PreparedLane {
   out: LaneOutcome;
-  /** Selected and fact-checked, ready to post. Null when the lane failed before that. */
+  /** Selected and fact-checked, ready to mark. Null when the lane failed before that. */
   stories: StoryWithLink[] | null;
 }
 
 /**
  * Everything a lane needs before it can be posted. Never rejects: a failure is
  * recorded on the outcome, because this promise is left unawaited while earlier
- * lanes post.
+ * lanes are marked.
  */
 async function prepare(
   lane: Lane,
@@ -121,7 +121,7 @@ async function prepare(
     updated: 0,
     checked: 0,
     costUsd: 0,
-    posted: 0,
+    digested: 0,
   };
 
   try {
@@ -152,17 +152,10 @@ async function prepare(
   }
 }
 
-async function post({ out, stories }: PreparedLane): Promise<LaneOutcome> {
+async function mark({ out, stories }: PreparedLane): Promise<LaneOutcome> {
   if (stories === null) return out;
   try {
-    const posted = await digestLane(out.lane, { prepared: stories });
-    out.posted = posted.sent;
-    if (!posted.ok) {
-      // -1 means postLane never made a request, which is a configuration problem
-      // rather than a Discord problem; saying "Discord returned -1" would send
-      // someone looking in the wrong place.
-      out.error = posted.status < 0 ? 'no Discord webhook configured' : `Discord returned ${posted.status}`;
-    }
+    out.digested = (await digestLane(out.lane, { prepared: stories })).digested;
   } catch (err) {
     out.error = err instanceof Error ? err.message : String(err);
   }
@@ -185,19 +178,15 @@ async function main(): Promise<void> {
     `info-feed digest · ${lanes.join(', ')} · since ${since.toISOString()} · model ${process.env.LLM_MODEL ?? 'claude-sonnet-5'}`,
   );
 
-  // The header goes out first so the start of a run is visible in Discord even if
-  // a later lane hangs (ADR 0004).
-  await postHeader(digestHeader(lanes.length, startedAt));
-
-  // Every lane starts now; the loop below only decides the order they are posted in.
+  // Every lane starts now; the loop below only decides the order they are logged in.
   const ingestInTurn = serialQueue();
   const preparing = lanes.map((lane) => prepare(lane, since, ingestInTurn));
 
   const outcomes: LaneOutcome[] = [];
   for (const [i, lane] of lanes.entries()) {
-    const outcome = await post(await preparing[i]);
+    const outcome = await mark(await preparing[i]);
     outcomes.push(outcome);
-    const status = outcome.error ? `FAILED (${outcome.error})` : `${outcome.posted} posted`;
+    const status = outcome.error ? `FAILED (${outcome.error})` : `${outcome.digested} digested`;
     console.log(
       `  ${lane}: ${outcome.fetched} fetched, ${outcome.stored} stored, ${outcome.filtered} filtered, ` +
         `${outcome.created} new stories, ${outcome.updated} updated, ${outcome.checked} fact-checked, ` +
@@ -205,12 +194,10 @@ async function main(): Promise<void> {
     );
   }
 
-  const quiet = outcomes.filter((o) => !o.error && o.posted === 0).map((o) => o.lane);
   const failed = outcomes.filter((o) => o.error).map((o) => o.lane);
-  await postFooter(digestFooter(quiet, failed));
 
-  // The products & tech section for the stories this run wrote. After the posts,
-  // so its web searches never hold up Discord; the web feed shows it once written.
+  // The products & tech section for the stories this run wrote. Last, so its web
+  // searches never hold up the lanes; the web feed shows it once written.
   let explainCost = 0;
   try {
     const explained = await explainNewStories();
@@ -226,10 +213,10 @@ async function main(): Promise<void> {
   }
 
   const totalCost = outcomes.reduce((sum, o) => sum + o.costUsd, 0) + explainCost;
-  const totalPosted = outcomes.reduce((sum, o) => sum + o.posted, 0);
+  const totalDigested = outcomes.reduce((sum, o) => sum + o.digested, 0);
   console.log(
     `Done in ${((Date.now() - startedAt.getTime()) / 1000).toFixed(1)}s · ` +
-      `${totalPosted} stories posted · $${totalCost.toFixed(4)} of model usage`,
+      `${totalDigested} stories digested · $${totalCost.toFixed(4)} of model usage`,
   );
 
   // Only a total failure is worth a non-zero exit. One dead lane is normal.
