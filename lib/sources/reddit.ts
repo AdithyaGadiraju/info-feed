@@ -63,13 +63,14 @@ const BLOCK_MS = 15 * 60_000;
  * (2026-11-13: four lanes, four 429s), and a 429 in one lane's call did not stop
  * the next lane's call from knocking again. Same idea as the session in twitter.ts.
  */
-const state = { nextRequestAt: 0, blockedUntil: 0 };
+const state = { nextRequestAt: 0, blockedUntil: 0, blockReason: '' };
 let sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Test hook: clears the process-wide pacing state and optionally swaps the sleeper. */
 export function resetRedditState(opts: { sleep?: (ms: number) => Promise<void> } = {}): void {
   state.nextRequestAt = 0;
   state.blockedUntil = 0;
+  state.blockReason = '';
   if (opts.sleep) sleep = opts.sleep;
 }
 
@@ -128,11 +129,13 @@ function toPlainBody(contentHtml: string): string {
  */
 class RateLimited extends Error {}
 
-async function fetchOnce(
-  url: string,
-  label: string,
-  ctx: SourceCtx,
-): Promise<Response | undefined> {
+/**
+ * Fetches one listing, or throws why not. Every failure throws, so fetch() can tell
+ * a quiet lane from a dead endpoint and report the second as a failed source rather
+ * than as an "ok" source with 0 items (2026-11-18: every lane 404'd for a whole
+ * digest, and the runs table said ok).
+ */
+async function fetchOnce(url: string, label: string, ctx: SourceCtx): Promise<Response> {
   const wait = state.nextRequestAt - Date.now();
   if (wait > 0) await sleep(wait);
 
@@ -144,8 +147,7 @@ async function fetchOnce(
     });
   } catch (err) {
     state.nextRequestAt = Date.now() + REQUEST_SPACING_MS;
-    console.warn(`[reddit] network error fetching ${label}: ${(err as Error).message}`);
-    return undefined;
+    throw new Error(`network error: ${(err as Error).message}`);
   }
 
   const reset = res.headers.get('x-ratelimit-reset');
@@ -153,12 +155,20 @@ async function fetchOnce(
   if (res.ok) return res;
   if (res.status === 429) {
     state.blockedUntil = Date.now() + blockMsAfter429(res.headers.get('retry-after'), reset);
+    state.blockReason = 'rate limited (HTTP 429)';
     throw new RateLimited(`${label} returned 429`);
   }
+  if (res.status === 404) {
+    // Measured 2026-11-18: Reddit's public RSS answers 404 "Not Found" (served by
+    // rss.reddit.com) for every form, combined or single subreddit, hot or new.
+    // That is the endpoint, not one subreddit, so the other lanes would only wait
+    // out 30-60 s of pacing each to get the same answer. Bench it like a 429.
+    state.blockedUntil = Date.now() + BLOCK_MS;
+    state.blockReason = 'public RSS returned HTTP 404 (needs OAuth, TODO T4)';
+  }
 
-  // 403 and everything else: degrade to partial results, keep going.
-  console.warn(`[reddit] ${label} returned HTTP ${res.status}`);
-  return undefined;
+  // 403 and everything else: this lane fails, the next one still gets its turn.
+  throw new Error(`HTTP ${res.status}`);
 }
 
 /** The subreddit a post belongs to, read from its permalink, lowercased. */
@@ -194,14 +204,12 @@ async function fetchLane(
   const label = specs.map((s) => `r/${s.sub}`).join('+');
   const url = `https://www.reddit.com/r/${specs.map((s) => s.sub).join('+')}/hot/.rss?limit=100`;
   const res = await fetchOnce(url, label, ctx);
-  if (!res) return [];
 
   let entries: RedditEntry[];
   try {
     entries = (await parser.parseString(await res.text())).items;
   } catch (err) {
-    console.warn(`[reddit] ${label} returned unparseable feed: ${(err as Error).message}`);
-    return [];
+    throw new Error(`unparseable feed: ${(err as Error).message}`);
   }
   const groups = groupBySubreddit(entries);
   return specs.flatMap((spec) => mapEntries(groups.get(spec.sub.toLowerCase()) ?? [], spec, ctx));
@@ -292,28 +300,32 @@ export const reddit: Source = {
     const lanes = [...byLane.values()];
 
     const items: RawItem[] = [];
+    let succeeded = 0;
+    const failures: string[] = [];
     for (const specs of lanes) {
+      const label = specs.length === 1 && specs[0].solo ? `r/${specs[0].sub}` : specs[0].lane;
       if (Date.now() < state.blockedUntil) {
-        // Stop knocking: the address has already been told to back off, and the
-        // runner treats a short partial result as a success. The block outlives
-        // this call, so the digest's later per-lane calls skip too.
-        const skipped = specs.map((s) => `r/${s.sub}`).join('+');
-        console.warn(`[reddit] rate limited; skipping ${skipped} until ${new Date(state.blockedUntil).toLocaleTimeString()}`);
+        // Stop knocking: the address has already been told to back off. The block
+        // outlives this call, so the digest's later per-lane calls skip too.
+        const until = new Date(state.blockedUntil).toLocaleTimeString();
+        console.warn(`[reddit] ${state.blockReason}; skipping ${label} until ${until}`);
+        failures.push(`${label} skipped, ${state.blockReason}`);
         continue;
       }
       try {
         items.push(...(await fetchLane(specs, ctx)));
+        succeeded += 1;
       } catch (err) {
-        if (err instanceof RateLimited) {
-          console.warn(
-            `[reddit] rate limited (${err.message}); leaving Reddit alone until ${new Date(state.blockedUntil).toLocaleTimeString()}`,
-          );
-          continue;
-        }
-        console.warn(`[reddit] ${specs[0].lane} failed: ${(err as Error).message}`);
+        const why = err instanceof RateLimited ? 'HTTP 429' : (err as Error).message;
+        console.warn(`[reddit] ${label} failed: ${why}`);
+        failures.push(`${label}: ${why}`);
       }
     }
 
+    // Some lanes working is a partial result and counts as a success. None working
+    // is a failed source, so the runs table and the digest's "source(s) failed"
+    // line say so instead of logging Reddit as ok with 0 items.
+    if (succeeded === 0 && failures.length > 0) throw new Error(failures.join('; '));
     return items;
   },
 };

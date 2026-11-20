@@ -58,7 +58,7 @@ describe('prices source', () => {
       return;
     }
 
-    const config: SourcesConfig = { ...sourcesConfig, priceMovePct: 0 };
+    const config: SourcesConfig = { ...sourcesConfig, priceMovePct: 0, priceMovePctBySymbol: {}, stockMovers: undefined };
     const items = await prices.fetch({ since, config });
 
     if (items.length === 0) {
@@ -86,7 +86,7 @@ describe('prices source', () => {
     }
 
     const before = new Date();
-    const config: SourcesConfig = { ...sourcesConfig, priceMovePct: 999 };
+    const config: SourcesConfig = { ...sourcesConfig, priceMovePct: 999, priceMovePctBySymbol: {}, stockMovers: undefined };
     const items = await prices.fetch({ since, config });
 
     expect(items.length).toBe(0);
@@ -116,7 +116,7 @@ describe('prices source', () => {
     }) as typeof fetch;
 
     try {
-      const config: SourcesConfig = { ...sourcesConfig, stocks: [] };
+      const config: SourcesConfig = { ...sourcesConfig, stocks: [], stockMovers: undefined };
       const items = await prices.fetch({ since, config });
       expect(Array.isArray(items)).toBe(true);
       expect(yahooRequested).toBe(false);

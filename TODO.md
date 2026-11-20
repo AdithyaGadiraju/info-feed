@@ -19,7 +19,13 @@ contributes nothing on an already-throttled address, ~11 requests stretch Reddit
 over several minutes of a run, and even when it works it carries no vote counts, so `thresholds.redditTopN` stands in for the
 upvote threshold. To fix: register a free Reddit script app, put the client id and
 secret in `.env`, and switch `lib/sources/reddit.ts` to OAuth (100 req/min). The module
-shape does not change. This is the single highest-value follow-up for feed quality,
+shape does not change. **Update 2026-11-18: the public RSS is gone.** Every form (`/r/a+b/hot/.rss`,
+`/r/sub/hot/.rss`, `/r/sub/.rss`, `/r/sub.rss`, `/new/`) now returns 404 "Not Found"
+from `rss.reddit.com`, `/hot.json` still 403s, and `old.reddit.com` redirects to a login.
+The last Reddit item stored is from 2026-11-17 03:43 UTC. The source now benches itself
+on the first 404 and reports Reddit as a failed source in `runs`, so a digest no longer
+spends ~9 minutes pacing requests that all fail. Until OAuth is in, Reddit contributes
+nothing. This is the single highest-value follow-up for feed quality,
 because r/gamedev, r/godot, r/MMA and r/algobetting are the main source for three lanes.
 
 T5. **Nothing stops two digests running at once.** Found by the v1 code review on

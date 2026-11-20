@@ -163,7 +163,9 @@ async function fetchQueries(
     budget.remaining -= 1;
     try {
       const page = await rettiwt.tweet.search(
-        { includePhrase: spec.query, minLikes: spec.minFaves },
+        // Original English posts only: retweets and replies repeat or fragment the
+        // post that matters, and the model would only drop them.
+        { includePhrase: spec.query, minLikes: spec.minFaves, onlyOriginal: true, language: 'en' },
         SEARCH_COUNT,
       );
       for (const tweet of page.list as unknown as RettiwtTweetLike[]) {

@@ -471,7 +471,8 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
     // Bounded only as a guard against a cursor that never advances; the bound
     // scales with the data instead of assuming how many rows exist.
     for (let page = 0; page <= expected; page += 1) {
-      const res = await getFeedPage({ lanes: ['ai'], minScore: 5, limit: 2, cursor });
+      // picks: false, or the day's score-3 picks join the page and break the count.
+      const res = await getFeedPage({ lanes: ['ai'], minScore: 5, limit: 2, cursor, picks: false });
       seen.push(...res.stories.map((st) => st.id));
       cursor = res.nextCursor;
       if (!cursor) break;

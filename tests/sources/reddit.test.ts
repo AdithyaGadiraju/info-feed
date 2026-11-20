@@ -116,16 +116,25 @@ describe('reddit source (stubbed network)', () => {
 
   it('after a 429, skips every later lane, including those of later fetch() calls', async () => {
     const { calls } = stubReddit([{ status: 429 }]);
-    const first = await reddit.fetch(
-      ctxFor([
-        { lane: 'ai', sub: 'MachineLearning' },
-        { lane: 'gamedev', sub: 'godot' },
-      ]),
-    );
-    const later = await reddit.fetch(ctxFor([{ lane: 'games', sub: 'Games' }]));
-    expect(first).toEqual([]);
-    expect(later).toEqual([]);
+    // Nothing worked, so the source fails: the runner records it under failedSources.
+    await expect(
+      reddit.fetch(
+        ctxFor([
+          { lane: 'ai', sub: 'MachineLearning' },
+          { lane: 'gamedev', sub: 'godot' },
+        ]),
+      ),
+    ).rejects.toThrow(/ai: HTTP 429; gamedev skipped, rate limited/);
+    await expect(reddit.fetch(ctxFor([{ lane: 'games', sub: 'Games' }]))).rejects.toThrow(/games skipped/);
     expect(calls).toHaveLength(1);
+  });
+
+  it('after a 404, benches Reddit like a 429 instead of pacing every lane into the same answer', async () => {
+    const { calls, sleeps } = stubReddit([{ status: 404 }]);
+    await expect(reddit.fetch(ctxFor([{ lane: 'ai', sub: 'MachineLearning' }]))).rejects.toThrow(/ai: HTTP 404/);
+    await expect(reddit.fetch(ctxFor([{ lane: 'games', sub: 'Games' }]))).rejects.toThrow(/HTTP 404 \(needs OAuth/);
+    expect(calls).toHaveLength(1);
+    expect(sleeps).toHaveLength(0);
   });
 
   it('degrades a 403 to an empty lane and carries on with the next', async () => {

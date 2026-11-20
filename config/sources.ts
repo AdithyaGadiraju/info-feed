@@ -249,6 +249,12 @@ export const sourcesConfig: SourcesConfig = {
     // patch and QOL releases as noise, so these can stay unfiltered. O3DE has no
     // feed and CRYENGINE's stopped in 2024; GameFromScratch covers both.
     { lane: 'gamedev', name: 'Godot', url: 'https://godotengine.org/rss.xml' },
+    // -- craft channels picked 2026-11-20 for Gadi's slowest steps (art, tech art,
+    // balancing) in Godot and Unreal. YouTube RSS: no API key, no Twitter budget.
+    { lane: 'gamedev', name: 'Ben Cloward (YouTube)', url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCoG9TB1eL6dm9eNbLFueHBQ' },
+    { lane: 'gamedev', name: 'William Faucher (YouTube)', url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCGKjGGjdl-GzEcFPf1EQwqw' },
+    { lane: 'gamedev', name: 'Acerola (YouTube)', url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCQG40havu4kNpB4pxUDQhYQ' },
+    { lane: 'gamedev', name: 'Timothy Cain (YouTube)', url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCTAfm-YD2M9xzvbYvRc5ttA' },
     { lane: 'gamedev', name: 'Unreal Engine', url: 'https://www.unrealengine.com/en-US/rss' },
     { lane: 'gamedev', name: 'Unity', url: 'https://blog.unity.com/feed' },
     { lane: 'gamedev', name: 'Bevy', url: 'https://bevyengine.org/atom.xml' },
@@ -268,6 +274,16 @@ export const sourcesConfig: SourcesConfig = {
     // markets
     { lane: 'markets', name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
     { lane: 'markets', name: 'CNBC Markets', url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258' },
+    // -- analysts picked 2026-11-20 for facts-and-logic analysis with no hype or
+    // hidden motive (Gadi's rule). Cowen: crypto cycles and risk models. Alden:
+    // macro and debt cycles. Howell: global liquidity, the closest to Dalio.
+    // Glassnode is left out: its feed sits behind a Cloudflare challenge.
+    { lane: 'markets', name: 'Benjamin Cowen (YouTube)', url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCRvqjQPSeaWn-uEx-w0XOIg' },
+    { lane: 'markets', name: 'Lyn Alden', url: 'https://www.lynalden.com/feed/' },
+    { lane: 'markets', name: 'Capital Wars (Michael Howell)', url: 'https://capitalwars.substack.com/feed' },
+    // Good macro and chart analysis in clickbait titles; the markets lane note tells
+    // the model to summarise the argument only and ignore the title.
+    { lane: 'markets', name: 'Bravos Research (YouTube)', url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCOHxDwCcOzBaLkeTazanwcw' },
     // betting. All four ADR 0002 seeds (Pinnacle, Unabated, MMA Junkie, Bloody Elbow)
     // were dead on 2026-09-13 and are replaced with live equivalents covering the same
     // two halves of the lane: MMA/fight news, and the betting industry itself. The
@@ -438,14 +454,43 @@ export const sourcesConfig: SourcesConfig = {
     { lane: 'betting', keywords: ['betting', 'sportsbook', 'prediction market', 'odds', 'kelly criterion', 'ufc', 'mma'] },
   ],
 
-  // v1 watchlist is crypto only. Stocks are deliberately empty (GOAL.md).
+  // Watchlist set 2026-11-20: crypto first (majors, big alts, the top two
+  // memecoins to stay in the loop), plus indices, regions and US sectors for a
+  // view of the whole market and of rotation between its parts.
   crypto: [
     { symbol: 'BTC', coingeckoId: 'bitcoin' },
     { symbol: 'ETH', coingeckoId: 'ethereum' },
     { symbol: 'SOL', coingeckoId: 'solana' },
+    { symbol: 'XRP', coingeckoId: 'ripple' },
+    { symbol: 'BNB', coingeckoId: 'binancecoin' },
+    { symbol: 'ADA', coingeckoId: 'cardano' },
+    { symbol: 'LINK', coingeckoId: 'chainlink' },
+    { symbol: 'AVAX', coingeckoId: 'avalanche-2' },
+    { symbol: 'DOGE', coingeckoId: 'dogecoin' },
+    { symbol: 'SHIB', coingeckoId: 'shiba-inu' },
   ],
-  stocks: [],
+  stocks: [
+    '^GSPC', '^IXIC', '^RUT', '^VIX', '^AXJO', '^N225', '^HSI', '^STOXX50E',
+    'XLK', 'SMH', 'XLF', 'XLE', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC',
+  ],
+  // A "big move" (agreed 2026-11-20): BTC/ETH 5%, other coins 10%, an index 2%,
+  // a sector 3%. The VIX moves 10% on an ordinary day, so its bar is 20.
   priceMovePct: 5,
+  priceMovePctBySymbol: {
+    SOL: 10, XRP: 10, BNB: 10, ADA: 10, LINK: 10, AVAX: 10, DOGE: 10, SHIB: 10,
+    '^GSPC': 2, '^IXIC': 2, '^RUT': 2, '^AXJO': 2, '^N225': 2, '^HSI': 2, '^STOXX50E': 2,
+    '^VIX': 20,
+    XLK: 3, SMH: 3, XLF: 3, XLE: 3, XLV: 3, XLI: 3, XLY: 3, XLP: 3, XLU: 3, XLB: 3, XLRE: 3, XLC: 3,
+  },
+  priceNames: {
+    '^GSPC': 'S&P 500', '^IXIC': 'Nasdaq Composite', '^RUT': 'Russell 2000 small caps', '^VIX': 'VIX volatility index',
+    '^AXJO': 'ASX 200, Australia', '^N225': 'Nikkei 225, Japan', '^HSI': 'Hang Seng, Hong Kong', '^STOXX50E': 'Euro Stoxx 50',
+    XLK: 'US tech sector', SMH: 'semiconductors', XLF: 'US financials', XLE: 'US energy', XLV: 'US health care',
+    XLI: 'US industrials', XLY: 'US consumer discretionary', XLP: 'US consumer staples', XLU: 'US utilities',
+    XLB: 'US materials', XLRE: 'US real estate', XLC: 'US communication services',
+  },
+  // Single stocks: 8% in a day for a company worth $10B or more.
+  stockMovers: { minMarketCapB: 10, minMovePct: 8 },
 
   thresholds: {
     // Reddit's public JSON API returns 403 to unauthenticated clients, so the source
@@ -531,7 +576,22 @@ export const sourcesConfig: SourcesConfig = {
 
   // Empty until a throwaway account exists and RETTIWT_API_KEY is set (TODO T3).
   twitterLists: [],
-  twitterQueries: [],
+  // Keyword searches, added 2026-11-18 when Reddit's public RSS went away (TODO T4).
+  // They stand in for r/ClaudeCode, r/codex, r/aigamedev, r/comfyui and friends:
+  // practitioner posts that no blog covers yet. Measured that day: each returns
+  // 4-20 English original posts from the last 48 h at these like floors. Search
+  // pulls in some drama and hype; enrichment drops it. Twitter allows 10 calls
+  // a digest, shared across lanes. The three followed accounts below use one each,
+  // so keep this at 7 (AGENTS.md and "mcp server" were cut on 2026-11-20).
+  twitterQueries: [
+    { lane: 'ai_dev', query: 'claude code', minFaves: 300 },
+    { lane: 'ai_dev', query: 'codex', minFaves: 800 },
+    { lane: 'ai_gamedev', query: 'comfyui', minFaves: 150 },
+    { lane: 'ai_gamedev', query: 'gaussian splatting', minFaves: 100 },
+    { lane: 'ai_gamedev', query: 'blender addon', minFaves: 100 },
+    { lane: 'ai_gamedev', query: 'pixel art ai', minFaves: 100 },
+    { lane: 'gamedev', query: 'godot', minFaves: 300 },
+  ],
   // Followed accounts: own posts + quote posts, no likes threshold, score floor.
   twitterUsers: [
     {
@@ -544,6 +604,29 @@ export const sourcesConfig: SourcesConfig = {
         'recommends, ways of working with LLMs) is high value: score 5. Any other post ' +
         'with real substance (AI research, evals, education, model releases): score 4. ' +
         'Drop only personal posts, jokes and chat with no takeaway.',
+      minScore: 4,
+    },
+    {
+      lane: 'markets',
+      userName: 'DeItaone',
+      userId: '2704294333',
+      note:
+        'Walter Bloomberg: market-moving headlines copied from the Bloomberg terminal, ' +
+        'with no opinion. A headline is the "news" half of a news-and-reaction story: ' +
+        'join it to a price-move item for the same asset when there is one. Keep a ' +
+        'headline only when it moved, or could clearly move, crypto, an index, a sector ' +
+        'or a large stock. Drop routine data, minor company news and politics with no ' +
+        'market angle. Headlines are unverified: say "reported" until a second source agrees.',
+      minScore: 3,
+    },
+    {
+      lane: 'ai_gamedev',
+      userName: 'dylan_ebert_',
+      userId: '995799585946816512',
+      note:
+        'Dylan Ebert, Hugging Face, AI for game development: AI 3D, open models and game ' +
+        'dev tools. A new tool, model or workflow a game developer can use: score 4 or 5. ' +
+        'Other posts with a real takeaway about AI in games: score 3. Drop personal posts and chat.',
       minScore: 4,
     },
   ],

@@ -240,10 +240,20 @@ export interface SourcesConfig {
   hnFrontPageLaneKeywords: Array<{ lane: Lane; keywords: string[] }>;
   /** CoinGecko ids keyed by the ticker shown in the feed. */
   crypto: Array<{ symbol: string; coingeckoId: string }>;
-  /** Empty for v1 by decision (crypto-only watchlist). */
+  /** Yahoo Finance symbols: indices, region and sector ETFs (whole-market view). */
   stocks: string[];
-  /** Percent 24h move that makes a price worth an item. */
+  /** Default percent 24h move that makes a price worth an item. */
   priceMovePct: number;
+  /** Per-symbol override of `priceMovePct`, e.g. 2 for an index, 10 for a small coin. */
+  priceMovePctBySymbol?: Record<string, number>;
+  /** Plain name shown with a symbol, e.g. `XLK` -> "US tech sector". */
+  priceNames?: Record<string, string>;
+  /**
+   * Single stocks that moved a lot today, from Yahoo's day gainers and losers
+   * screens. Only companies worth at least `minMarketCapB` billion USD count, so a
+   * big move is news and not a penny stock.
+   */
+  stockMovers?: { minMarketCapB: number; minMovePct: number };
   thresholds: Thresholds;
   /** New models by pipeline tag or name, and gated Daily Papers. */
   huggingface: HuggingFaceConfig;
