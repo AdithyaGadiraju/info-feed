@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useId, useState, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useClickOrSelect } from '@/components/clickOrSelect';
 import Markdown from 'react-markdown';
 import Icon, { type IconName } from '@/components/Icon';
@@ -410,6 +410,46 @@ function EventFactsList({ event }: { event: EventFacts }) {
   );
 }
 
+/** What the ID button puts on the clipboard: "story #1234". The number is `stories.id`, the same one as in /story/1234. */
+export function storyRef(id: number): string {
+  return `story #${id}`;
+}
+
+/**
+ * The story's ID, copied in one click, so a story can be named exactly in a chat.
+ * It sits in the card head, whose click handler skips .story-id, so copying never
+ * toggles the card.
+ */
+function StoryId({ id }: { id: number }) {
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  const copy = () => {
+    const show = (next: 'copied' | 'failed') => {
+      setState(next);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setState('idle'), 1500);
+    };
+    // navigator.clipboard is absent on a non-HTTPS origin.
+    if (!navigator.clipboard) return show('failed');
+    navigator.clipboard.writeText(storyRef(id)).then(
+      () => show('copied'),
+      () => show('failed'),
+    );
+  };
+
+  return (
+    <button type="button" className="story-id small" onClick={copy} title={`Copy "${storyRef(id)}"`}>
+      <Icon name={state === 'copied' ? 'check' : 'copy'} size={13} />
+      <span aria-live="polite">{state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed' : `#${id}`}</span>
+      {state === 'idle' ? <span className="visually-hidden">: copy story ID</span> : null}
+    </button>
+  );
+}
+
 export interface StoryCardProps {
   story: StoryWithCount;
   /**
@@ -499,8 +539,8 @@ export default function StoryCard({
   const toggleOnClick = useClickOrSelect(toggle);
   const onHeadClick = useCallback(
     (e: MouseEvent<HTMLDivElement>) => {
-      // The Terms glossary and any link handle their own clicks.
-      if ((e.target as Element).closest('a, .glossary')) return;
+      // The Terms glossary, the ID button and any link handle their own clicks.
+      if ((e.target as Element).closest('a, .glossary, .story-id')) return;
       toggleOnClick(e);
     },
     [toggleOnClick],
@@ -532,8 +572,11 @@ export default function StoryCard({
           {verification ? <VerdictBadge verification={verification} outdated={outdated} /> : null}
           {story.event ? <EventCountdown event={story.event} /> : null}
           {doneAt ? <DoneTag doneAt={doneAt} /> : null}
-          <span className="subtle small ml-auto" suppressHydrationWarning>
-            {relativeTime(story.updatedAt)}
+          <span className="ml-auto flex items-center gap-3">
+            <StoryId id={story.id} />
+            <span className="subtle small" suppressHydrationWarning>
+              {relativeTime(story.updatedAt)}
+            </span>
           </span>
         </div>
         <Heading className={`story-title ${headingLevel === 1 ? 'story-title-lg' : ''} mt-3`}>{story.title}</Heading>
