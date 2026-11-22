@@ -129,12 +129,41 @@ describe('reddit source (stubbed network)', () => {
     expect(calls).toHaveLength(1);
   });
 
-  it('after a 404, benches Reddit like a 429 instead of pacing every lane into the same answer', async () => {
+  it('after a 404, fails once with one log line, then stays quiet instead of failing every lane', async () => {
     const { calls, sleeps } = stubReddit([{ status: 404 }]);
-    await expect(reddit.fetch(ctxFor([{ lane: 'ai', sub: 'MachineLearning' }]))).rejects.toThrow(/ai: HTTP 404/);
-    await expect(reddit.fetch(ctxFor([{ lane: 'games', sub: 'Games' }]))).rejects.toThrow(/HTTP 404 \(needs OAuth/);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // The call that finds the endpoint gone is the one failed source the runner records.
+    await expect(
+      reddit.fetch(
+        ctxFor([
+          { lane: 'ai', sub: 'MachineLearning' },
+          { lane: 'gamedev', sub: 'godot' },
+        ]),
+      ),
+    ).rejects.toThrow(/HTTP 404 \(needs OAuth/);
+    // The digest's later per-lane calls: no request, no log line, no failure.
+    await expect(reddit.fetch(ctxFor([{ lane: 'games', sub: 'Games' }]))).resolves.toEqual([]);
+    await expect(reddit.fetch(ctxFor([{ lane: 'markets', sub: 'stocks' }]))).resolves.toEqual([]);
     expect(calls).toHaveLength(1);
     expect(sleeps).toHaveLength(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/^\[reddit\] public RSS returned HTTP 404 .*Reddit is off, next check after/);
+    warn.mockRestore();
+  });
+
+  it('treats a 404 after a working listing as one dead subreddit, not a dead endpoint', async () => {
+    const { calls } = stubReddit([{ status: 200, subs: ['MachineLearning'] }, { status: 404 }, { status: 200, subs: ['Games'] }]);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const items = await reddit.fetch(
+      ctxFor([
+        { lane: 'ai', sub: 'MachineLearning' },
+        { lane: 'gamedev', sub: 'gone_subreddit' },
+        { lane: 'games', sub: 'Games' },
+      ]),
+    );
+    expect(calls).toHaveLength(3);
+    expect(items.map((i) => i.laneHint)).toEqual(['ai', 'games']);
+    vi.restoreAllMocks();
   });
 
   it('degrades a 403 to an empty lane and carries on with the next', async () => {

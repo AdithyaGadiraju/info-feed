@@ -25,7 +25,10 @@ from `rss.reddit.com`, `/hot.json` still 403s, and `old.reddit.com` redirects to
 The last Reddit item stored is from 2026-11-17 03:43 UTC. The source now benches itself
 on the first 404 and reports Reddit as a failed source in `runs`, so a digest no longer
 spends ~9 minutes pacing requests that all fail. Until OAuth is in, Reddit contributes
-nothing. This is the single highest-value follow-up for feed quality,
+nothing. **Update 2026-11-21: still 404 for every form and user agent.** A digest logged
+the failure once per lane, so the source now says it once per process (one log line,
+one failed source in `runs`, later lanes return nothing silently) and checks again
+after 6 hours. **Update 2026-11-22: Reddit denied the API access request and is not giving out new access, so OAuth is not an option.** Another way to get Reddit content is to be chosen later. This is the single highest-value follow-up for feed quality,
 because r/gamedev, r/godot, r/MMA and r/algobetting are the main source for three lanes.
 
 T5. **Nothing stops two digests running at once.** Found by the v1 code review on

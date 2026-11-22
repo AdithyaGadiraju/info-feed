@@ -14,6 +14,52 @@ const USER_AGENT = 'info-feed/1.0 (personal news digest)';
 // without looking like a burst of traffic to any single host's shared infra.
 const CONCURRENCY = 10;
 
+/**
+ * Requests to one host go out one at a time, at least this far apart. CONCURRENCY
+ * only bounds the whole run: a lane lists 30 github.com feeds and two itch.io ones
+ * next to each other, and they used to leave in the same instant. itch.io answered
+ * that with 429 for both (2026-11-21).
+ */
+const HOST_SPACING_MS = 500;
+/** A 429 is retried once, and only when the host names a wait no longer than this. */
+const MAX_RETRY_AFTER_MS = 10_000;
+/**
+ * After a 429 with no usable Retry-After the host is left alone for this long, so
+ * its other feeds do not knock again. Measured 2026-11-21: itch.io sends no
+ * Retry-After and kept answering 429 for minutes while requests kept arriving.
+ * Same idea as BLOCK_MS in reddit.ts.
+ */
+const HOST_BLOCK_MS = 15 * 60_000;
+
+interface HostState {
+  /** The host's queue: each request starts when the one before it has settled. */
+  tail: Promise<unknown>;
+  nextRequestAt: number;
+  blockedUntil: number;
+}
+
+/**
+ * Pacing and 429 state per host, held per PROCESS like the state in reddit.ts:
+ * `npm run digest` calls fetch() once per lane, seconds apart.
+ */
+const hosts = new Map<string, HostState>();
+let sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Test hook: clears the per-host pacing state and optionally swaps the sleeper. */
+export function resetRssState(opts: { sleep?: (ms: number) => Promise<void> } = {}): void {
+  hosts.clear();
+  if (opts.sleep) sleep = opts.sleep;
+}
+
+/** Retry-After as milliseconds from now: seconds or an HTTP date. Null when absent or junk. */
+export function retryAfterMs(header: string | null, now = Date.now()): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const at = Date.parse(header);
+  return Number.isNaN(at) ? null : Math.max(0, at - now);
+}
+
 /** Runs `tasks` with at most `limit` in flight at once, preserving input order. */
 async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
   const results: T[] = new Array(tasks.length);
@@ -54,13 +100,56 @@ function parsePublishedAt(item: Parser.Item): Date {
   return new Date();
 }
 
+/** One download, in its host's turn. Throws why not, so the caller logs one line. */
+async function fetchPaced(url: string, host: string, state: HostState, ctx: SourceCtx): Promise<string> {
+  for (let attempt = 0; ; attempt += 1) {
+    if (Date.now() < state.blockedUntil) throw new Error(`skipped, ${host} is rate limiting this address`);
+    const wait = state.nextRequestAt - Date.now();
+    if (wait > 0) await sleep(wait);
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { 'User-Agent': USER_AGENT },
+        signal: AbortSignal.timeout(ctx.config.sourceTimeoutMs),
+      });
+    } finally {
+      state.nextRequestAt = Date.now() + HOST_SPACING_MS;
+    }
+
+    if (res.ok) {
+      const text = await res.text();
+      // A site that goes private or puts up a challenge answers 200 with a web page
+      // (2026-11-21: updates.midjourney.com redirects /rss/ to a password page).
+      // Say so, rather than let the XML parser report "Unexpected close tag".
+      if (/^\s*<(!doctype html|html)\b/i.test(text)) {
+        throw new Error(`not a feed: got an HTML page${res.redirected ? ` (redirected to ${res.url})` : ''}`);
+      }
+      return text;
+    }
+    if (res.status === 429) {
+      const retry = retryAfterMs(res.headers.get('retry-after'));
+      if (attempt === 0 && retry !== null && retry <= MAX_RETRY_AFTER_MS) {
+        state.nextRequestAt = Math.max(state.nextRequestAt, Date.now() + retry);
+        continue;
+      }
+      state.blockedUntil = Date.now() + Math.max(retry ?? 0, HOST_BLOCK_MS);
+    }
+    throw new Error(`HTTP ${res.status}`);
+  }
+}
+
 async function fetchXml(url: string, ctx: SourceCtx): Promise<string> {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT },
-    signal: AbortSignal.timeout(ctx.config.sourceTimeoutMs),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.text();
+  const host = new URL(url).host;
+  let state = hosts.get(host);
+  if (!state) {
+    state = { tail: Promise.resolve(), nextRequestAt: 0, blockedUntil: 0 };
+    hosts.set(host, state);
+  }
+  const queued = state;
+  const run = queued.tail.then(() => fetchPaced(url, host, queued, ctx));
+  queued.tail = run.catch(() => {});
+  return run;
 }
 
 /**

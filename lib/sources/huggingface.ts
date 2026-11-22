@@ -79,7 +79,10 @@ export function modelsUrl(spec: HfModelSpec): string {
   return `${HUB}/api/models?${params}`;
 }
 
-/** UTC dates, newest first, the way `/api/daily_papers?date=` keys its listings. */
+/**
+ * UTC dates, newest first, the way `/api/daily_papers?date=` keys its listings.
+ * The newest may not be open yet (see fetchPapers).
+ */
 export function paperDates(now: Date, days = PAPER_LOOKBACK_DAYS): string[] {
   return Array.from({ length: days }, (_, i) => new Date(now.getTime() - i * DAY_MS).toISOString().slice(0, 10));
 }
@@ -149,12 +152,21 @@ function inLanes<T extends { lane: Lane }>(specs: T[], lanes: Lane[] | undefined
   return lanes ? specs.filter((s) => lanes.includes(s.lane)) : specs;
 }
 
+/** A failed Hub call, with the status so a caller can tell a 400 from an outage. */
+class HttpError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super(`HTTP ${status}`);
+    this.status = status;
+  }
+}
+
 async function getJson<T>(url: string, ctx: SourceCtx): Promise<T> {
   const res = await fetch(url, {
     headers: { 'User-Agent': USER_AGENT },
     signal: AbortSignal.timeout(ctx.config.sourceTimeoutMs),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw new HttpError(res.status);
   return (await res.json()) as T;
 }
 
@@ -179,12 +191,22 @@ async function fetchPapers(specs: HfPapersSpec[], ctx: SourceCtx, now: Date): Pr
   // Each day is fetched once and every gate runs over it, so the call count does not
   // grow with the number of specs.
   const entries: DailyPaper[] = [];
-  for (const date of paperDates(now)) {
+  // One spare date: when the newest is not open yet, the window starts a day earlier.
+  const dates = paperDates(now, PAPER_LOOKBACK_DAYS + 1);
+  let days = 0;
+  for (const [i, date] of dates.entries()) {
+    if (days >= PAPER_LOOKBACK_DAYS) break;
     try {
       entries.push(...(await getJson<DailyPaper[]>(`${HUB}/api/daily_papers?date=${date}&limit=${PAPERS_PER_DAY}`, ctx)));
     } catch (err) {
+      // Measured 2026-11-21 at 00:55 UTC: the Hub opens a date some hours after UTC
+      // midnight, and until then answers 400 ('"date" must be less than or equal to
+      // "2026-11-20T00:00:00.000Z"'). That is not a failure, and it does not count
+      // as one of the days.
+      if (i === 0 && err instanceof HttpError && err.status === 400) continue;
       console.warn(`[huggingface] daily papers ${date} failed: ${(err as Error).message}`);
     }
+    days += 1;
   }
   return specs.flatMap((spec) => mapPapers(entries, spec, now));
 }

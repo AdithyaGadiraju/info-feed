@@ -198,10 +198,12 @@ export const sourcesConfig: SourcesConfig = {
     // Mirelo: video-to-SFX, foley and audio-to-MIDI releases, ~4 a month, all on topic.
     { lane: 'ai_gamedev', name: 'Mirelo', url: 'https://mirelo.ai/feed.xml' },
     // Model launches (V8, Edit, Thinking Mode), ~6 a month; the weekly alpha changelog is skipped.
-    // Down since ~2026-11-12 (CNAME to midjourney.ghost.io answers 402, TLS name
-    // mismatch on the custom domain). Left on so it recovers by itself: while down it
-    // costs one warning line per run. If it stays down, look for a new feed URL.
-    { lane: 'ai_gamedev', name: 'Midjourney updates', url: 'https://updates.midjourney.com/rss/', exclude: /^alpha changelog/i },
+    // Down since ~2026-11-12 (first 402 from midjourney.ghost.io), and private since
+    // 2026-11-21: every path, /rss/ included, redirects to a Ghost password page, so
+    // the feed was removed. No other feed exists (www.midjourney.com/updates sits
+    // behind a Cloudflare challenge, docs.midjourney.com has none); HN and the X
+    // searches carry a new Midjourney model. To put it back if the site reopens:
+    // { lane: 'ai_gamedev', name: 'Midjourney updates', url: 'https://updates.midjourney.com/rss/', exclude: /^alpha changelog/i },
     // Game-character voice and TTS models, ~2 a month after the filter.
     { lane: 'ai_gamedev', name: 'Inworld (voice)', url: 'https://inworld.ai/blog/rss.xml', include: /\bTTS\b|voice model|speech|introducing|\bgames?\b|character/i },
     // SuperSplat and gaussian splats in a game engine, ~2 a month after the filter.

@@ -57,13 +57,22 @@ const parser = new Parser({ headers: { 'User-Agent': USER_AGENT } });
 const BLOCK_MS = 15 * 60_000;
 
 /**
+ * How long Reddit is left alone once the public RSS itself answers 404. That is the
+ * endpoint being gone (TODO T4), not a throttle, so it is checked a few times a day
+ * rather than every 15 minutes: one digest is one request and one log line, and the
+ * worker picks the feed up again by itself if Reddit ever brings it back.
+ */
+const GONE_BLOCK_MS = 6 * 60 * 60_000;
+const GONE_REASON = 'public RSS returned HTTP 404 (needs OAuth, TODO T4)';
+
+/**
  * Pacing and 429 state, held per PROCESS rather than per fetch() call. `npm run
  * digest` ingests lane by lane and calls fetch() once per lane, seconds apart, so
  * state kept inside one call let every lane's first request go out unspaced
  * (2026-11-13: four lanes, four 429s), and a 429 in one lane's call did not stop
  * the next lane's call from knocking again. Same idea as the session in twitter.ts.
  */
-const state = { nextRequestAt: 0, blockedUntil: 0, blockReason: '' };
+const state = { nextRequestAt: 0, blockedUntil: 0, blockReason: '', gone: false, worked: false };
 let sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Test hook: clears the process-wide pacing state and optionally swaps the sleeper. */
@@ -71,6 +80,8 @@ export function resetRedditState(opts: { sleep?: (ms: number) => Promise<void> }
   state.nextRequestAt = 0;
   state.blockedUntil = 0;
   state.blockReason = '';
+  state.gone = false;
+  state.worked = false;
   if (opts.sleep) sleep = opts.sleep;
 }
 
@@ -129,6 +140,9 @@ function toPlainBody(contentHtml: string): string {
  */
 class RateLimited extends Error {}
 
+/** Thrown when the RSS endpoint itself is gone; fetch() reports it once and goes quiet. */
+class EndpointGone extends Error {}
+
 /**
  * Fetches one listing, or throws why not. Every failure throws, so fetch() can tell
  * a quiet lane from a dead endpoint and report the second as a failed source rather
@@ -152,19 +166,26 @@ async function fetchOnce(url: string, label: string, ctx: SourceCtx): Promise<Re
 
   const reset = res.headers.get('x-ratelimit-reset');
   state.nextRequestAt = Date.now() + nextRequestDelayMs(res.headers.get('x-ratelimit-remaining'), reset);
-  if (res.ok) return res;
+  if (res.ok) {
+    state.worked = true;
+    return res;
+  }
   if (res.status === 429) {
     state.blockedUntil = Date.now() + blockMsAfter429(res.headers.get('retry-after'), reset);
     state.blockReason = 'rate limited (HTTP 429)';
     throw new RateLimited(`${label} returned 429`);
   }
-  if (res.status === 404) {
-    // Measured 2026-11-18: Reddit's public RSS answers 404 "Not Found" (served by
-    // rss.reddit.com) for every form, combined or single subreddit, hot or new.
-    // That is the endpoint, not one subreddit, so the other lanes would only wait
-    // out 30-60 s of pacing each to get the same answer. Bench it like a 429.
-    state.blockedUntil = Date.now() + BLOCK_MS;
-    state.blockReason = 'public RSS returned HTTP 404 (needs OAuth, TODO T4)';
+  if (res.status === 404 && !state.worked) {
+    // Measured 2026-11-18, again 2026-11-21: Reddit's public RSS answers 404 "Not
+    // Found" (served by rss.reddit.com) for every form, combined or single
+    // subreddit, hot or new, with any user agent. That is the endpoint, not one
+    // subreddit, so the other lanes would only wait out 30-60 s of pacing each to
+    // get the same answer. A 404 after a listing has worked in this process is a
+    // dead subreddit instead, and fails only its own lane.
+    state.blockedUntil = Date.now() + GONE_BLOCK_MS;
+    state.blockReason = GONE_REASON;
+    state.gone = true;
+    throw new EndpointGone(GONE_REASON);
   }
 
   // 403 and everything else: this lane fails, the next one still gets its turn.
@@ -299,6 +320,10 @@ export const reddit: Source = {
     }
     const lanes = [...byLane.values()];
 
+    // The endpoint is gone and this process has already said so: nothing to fetch,
+    // nothing to add to the log, and not a second failure for the same cause.
+    if (state.gone && Date.now() < state.blockedUntil) return [];
+
     const items: RawItem[] = [];
     let succeeded = 0;
     const failures: string[] = [];
@@ -316,6 +341,13 @@ export const reddit: Source = {
         items.push(...(await fetchLane(specs, ctx)));
         succeeded += 1;
       } catch (err) {
+        if (err instanceof EndpointGone) {
+          // One line and one failed source for the whole process, not one per lane:
+          // a digest calls fetch() once per lane, and the later calls return above.
+          const until = new Date(state.blockedUntil).toLocaleTimeString();
+          console.warn(`[reddit] ${GONE_REASON}; Reddit is off, next check after ${until}`);
+          throw err;
+        }
         const why = err instanceof RateLimited ? 'HTTP 429' : (err as Error).message;
         console.warn(`[reddit] ${label} failed: ${why}`);
         failures.push(`${label}: ${why}`);

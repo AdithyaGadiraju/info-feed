@@ -170,6 +170,25 @@ describe('huggingface source (mocked fetch)', () => {
     expect(items.map((i) => i.externalId).sort()).toEqual(['acme/mesh-gen', 'papers/2610.10539']);
   });
 
+  it('steps back a day, without a warning, while the Hub has not opened today yet', async () => {
+    const today = paperDates(new Date())[0];
+    const asked: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const date = new URL(String(input)).searchParams.get('date')!;
+      asked.push(date);
+      if (date === today) return json({ error: '"date" must be less than or equal to yesterday' }, 400);
+      return json([paper(`2610.${asked.length}`, 'Tetris3D: 3D Scene Generation', 48)]);
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const items = await huggingface.fetch(ctxWith({ models: [], papers: [assetPapers] }));
+
+    // Today, then the four days before it: the lookback keeps its full length.
+    expect(asked).toEqual(paperDates(new Date(), 5));
+    expect(items).toHaveLength(4);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('keeps the other listings when one fails', async () => {
     const recent = new Date(Date.now() - 24 * 3600_000).toISOString();
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
