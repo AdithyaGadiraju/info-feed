@@ -3,6 +3,8 @@
  * A failed fetch/parse must never block or fail an ingest run, so every error
  * path here resolves to null instead of throwing.
  */
+import { lookup as dnsLookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 
@@ -125,13 +127,147 @@ function fallbackTextContent(document: Document): string | null {
   return text.length >= MIN_EXTRACTED_CHARS ? text : null;
 }
 
-export async function fetchBody(url: string, timeoutMs = 8000): Promise<string | null> {
-  try {
-    const response = await fetch(url, {
-      redirect: 'follow',
-      signal: AbortSignal.timeout(timeoutMs),
+// ---- SSRF guard ----
+// Item URLs come from third-party feeds, so a link (or a redirect it answers with)
+// must not reach the worker's own network: loopback, private ranges, cloud
+// metadata (169.254.169.254) and the like. Redirects are followed by hand so each
+// hop is checked before it is fetched.
+
+export const MAX_REDIRECTS = 5;
+
+export type LookupAll = (hostname: string) => Promise<Array<{ address: string; family: number }>>;
+
+const defaultLookup: LookupAll = (hostname) => dnsLookup(hostname, { all: true });
+
+export interface FetchBodyOptions {
+  /** DNS resolver, injectable for tests. */
+  lookup?: LookupAll;
+  /** Skips the address check; only for tests that serve pages from 127.0.0.1. */
+  allowPrivateHosts?: boolean;
+}
+
+function parseIpv4(s: string): number[] | null {
+  const parts = s.split('.');
+  if (parts.length !== 4) return null;
+  const octets = parts.map((p) => (/^\d{1,3}$/.test(p) ? Number(p) : NaN));
+  return octets.every((o) => o >= 0 && o <= 255) ? octets : null;
+}
+
+function ipv4Blocked([a, b, c]: number[]): boolean {
+  return (
+    a === 0 || // 0.0.0.0/8 "this network"
+    a === 10 || // 10/8 private
+    a === 127 || // 127/8 loopback
+    (a === 100 && b >= 64 && b <= 127) || // 100.64/10 CGNAT
+    (a === 169 && b === 254) || // 169.254/16 link-local, cloud metadata
+    (a === 172 && b >= 16 && b <= 31) || // 172.16/12 private
+    (a === 192 && b === 168) || // 192.168/16 private
+    (a === 192 && b === 0 && (c === 0 || c === 2)) || // 192.0.0/24 IETF, 192.0.2/24 TEST-NET-1
+    (a === 198 && (b === 18 || b === 19)) || // 198.18/15 benchmarking
+    (a === 198 && b === 51 && c === 100) || // TEST-NET-2
+    (a === 203 && b === 0 && c === 113) || // TEST-NET-3
+    a >= 224 // 224/4 multicast, 240/4 reserved, broadcast
+  );
+}
+
+/** Eight 16-bit groups, or null. Accepts `::` and a dotted IPv4 tail. */
+function parseIpv6(s: string): number[] | null {
+  let text = s.toLowerCase();
+  const zone = text.indexOf('%');
+  if (zone >= 0) text = text.slice(0, zone);
+  const lastColon = text.lastIndexOf(':');
+  if (lastColon < 0) return null;
+  const tail = text.slice(lastColon + 1);
+  if (tail.includes('.')) {
+    // ::ffff:127.0.0.1 -> ::ffff:7f00:1
+    const v4 = parseIpv4(tail);
+    if (!v4) return null;
+    const hex = (hi: number, lo: number) => ((hi << 8) | lo).toString(16);
+    text = `${text.slice(0, lastColon + 1)}${hex(v4[0], v4[1])}:${hex(v4[2], v4[3])}`;
+  }
+  const halves = text.split('::');
+  if (halves.length > 2) return null;
+  const parse = (h: string) =>
+    h === '' ? [] : h.split(':').map((g) => (/^[0-9a-f]{1,4}$/.test(g) ? parseInt(g, 16) : NaN));
+  const head = parse(halves[0]);
+  let groups = head;
+  if (halves.length === 2) {
+    const rest = parse(halves[1]);
+    const fill = 8 - head.length - rest.length;
+    if (fill < 1) return null;
+    groups = [...head, ...Array<number>(fill).fill(0), ...rest];
+  }
+  return groups.length === 8 && groups.every((g) => !Number.isNaN(g)) ? groups : null;
+}
+
+/**
+ * True when an IP address is one a fetch of a public article must never reach.
+ * Anything that does not parse as an IP is blocked too, so the check fails closed.
+ */
+export function isBlockedAddress(ip: string): boolean {
+  const host = ip.startsWith('[') && ip.endsWith(']') ? ip.slice(1, -1) : ip;
+  const v4 = parseIpv4(host);
+  if (v4) return ipv4Blocked(v4);
+  const g = parseIpv6(host);
+  if (!g) return true;
+  const embeddedV4 = [g[6] >> 8, g[6] & 0xff, g[7] >> 8, g[7] & 0xff];
+  const zeroTo = (n: number) => g.slice(0, n).every((x) => x === 0);
+  if (zeroTo(5) && g[5] === 0xffff) return ipv4Blocked(embeddedV4); // ::ffff:a.b.c.d mapped
+  if (zeroTo(6)) return true; // ::, ::1 and the old IPv4-compatible ::a.b.c.d
+  if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0) {
+    return ipv4Blocked(embeddedV4); // 64:ff9b::/96 NAT64
+  }
+  return (
+    (g[0] & 0xffc0) === 0xfe80 || // fe80::/10 link-local
+    (g[0] & 0xfe00) === 0xfc00 || // fc00::/7 unique-local
+    (g[0] & 0xff00) === 0xff00 || // ff00::/8 multicast
+    (g[0] === 0x2001 && g[1] === 0x0db8) || // 2001:db8::/32 documentation
+    (g[0] === 0x0100 && g[1] === 0 && g[2] === 0 && g[3] === 0) // 100::/64 discard
+  );
+}
+
+/** Throws when a URL is not http(s) or its host is, or resolves to, a blocked address. */
+async function assertFetchable(target: URL, opts: FetchBodyOptions): Promise<void> {
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+    throw new Error(`refused scheme ${target.protocol}`);
+  }
+  if (opts.allowPrivateHosts) return;
+  const host = target.hostname.replace(/^\[|\]$/g, '');
+  if (isIP(host)) {
+    if (isBlockedAddress(host)) throw new Error(`refused private address ${host}`);
+    return;
+  }
+  const addresses = await (opts.lookup ?? defaultLookup)(host);
+  if (addresses.length === 0) throw new Error(`no address for ${host}`);
+  const bad = addresses.find((a) => isBlockedAddress(a.address));
+  if (bad) throw new Error(`refused private address ${bad.address} for ${host}`);
+}
+
+/** Fetches with redirects followed by hand, each hop checked by assertFetchable. */
+async function guardedFetch(url: string, signal: AbortSignal, opts: FetchBodyOptions): Promise<Response> {
+  let target = new URL(url);
+  for (let hop = 0; ; hop += 1) {
+    await assertFetchable(target, opts);
+    const response = await fetch(target, {
+      redirect: 'manual',
+      signal,
       headers: { 'User-Agent': USER_AGENT },
     });
+    const location = response.headers.get('location');
+    if (response.status < 300 || response.status >= 400 || location === null) return response;
+    await response.body?.cancel().catch(() => {});
+    if (hop >= MAX_REDIRECTS) throw new Error(`more than ${MAX_REDIRECTS} redirects`);
+    target = new URL(location, target);
+  }
+}
+
+export async function fetchBody(
+  url: string,
+  timeoutMs = 8000,
+  opts: FetchBodyOptions = {},
+): Promise<string | null> {
+  try {
+    const response = await guardedFetch(url, AbortSignal.timeout(timeoutMs), opts);
 
     if (!response.ok) {
       warn(url, `HTTP ${response.status}`);

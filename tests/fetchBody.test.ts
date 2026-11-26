@@ -6,7 +6,18 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { fetchBody, fetchBodies, MAX_BODY_CHARS, MAX_RESPONSE_BYTES } from '../lib/fetchBody';
+import {
+  fetchBody,
+  fetchBodies,
+  isBlockedAddress,
+  MAX_BODY_CHARS,
+  MAX_REDIRECTS,
+  MAX_RESPONSE_BYTES,
+  type LookupAll,
+} from '../lib/fetchBody';
+
+// The page-shape server listens on 127.0.0.1, which the SSRF guard refuses.
+const LOCAL = { allowPrivateHosts: true };
 
 // Wikipedia articles are stable, semantically marked-up, and extraction-friendly —
 // far less likely to rot than a random blog post.
@@ -138,7 +149,7 @@ describe('fetchBody page shapes', () => {
 
   it('extracts from the prefix of a streamed page over the size ceiling', async () => {
     const warn = vi.spyOn(console, 'warn');
-    const body = await fetchBody(`${base}/oversized-chunked`);
+    const body = await fetchBody(`${base}/oversized-chunked`, 8000, LOCAL);
     expect(body).not.toBeNull();
     expect(body).toContain('The newest entry sits at the top');
     expect((body as string).length).toBeLessThanOrEqual(MAX_BODY_CHARS);
@@ -146,18 +157,18 @@ describe('fetchBody page shapes', () => {
   });
 
   it('reads up to the ceiling when content-length declares more', async () => {
-    const body = await fetchBody(`${base}/oversized-declared`);
+    const body = await fetchBody(`${base}/oversized-declared`, 8000, LOCAL);
     expect(body).toContain('The newest entry sits at the top');
   });
 
   it('decodes a prefix cut through a multi-byte character', async () => {
-    const body = await fetchBody(`${base}/split-char`);
+    const body = await fetchBody(`${base}/split-char`, 8000, LOCAL);
     expect(body).toContain('The newest entry sits at the top');
   });
 
   it('extracts from markup that omits <head> and <body>, without warning', async () => {
     const warn = vi.spyOn(console, 'warn');
-    const body = await fetchBody(`${base}/tagless`);
+    const body = await fetchBody(`${base}/tagless`, 8000, LOCAL);
     expect(body).toContain('The newest entry sits at the top');
     expect(body).not.toContain('color:red');
     expect(body).not.toContain('var x');
@@ -165,9 +176,94 @@ describe('fetchBody page shapes', () => {
   });
 
   it('skips a table of contents that precedes the content', async () => {
-    const body = await fetchBody(`${base}/toc`);
+    const body = await fetchBody(`${base}/toc`, 8000, LOCAL);
     expect(body).not.toBeNull();
     expect(body).not.toContain('2.1.2992.1.298');
     expect(body).toContain('The newest entry sits at the top');
+  });
+});
+
+describe('isBlockedAddress', () => {
+  it.each([
+    '127.0.0.1', '127.255.0.9', '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.1',
+    '169.254.169.254', '100.64.0.1', '100.127.255.255', '0.0.0.0', '0.1.2.3', '224.0.0.1',
+    '239.1.1.1', '240.0.0.1', '255.255.255.255', '192.0.2.5', '198.18.0.1',
+    '::1', '::', '[::1]', 'fe80::1', 'febf::1', 'fc00::1', 'fd12:3456::1', 'ff02::1',
+    '::ffff:127.0.0.1', '::ffff:7f00:1', '::ffff:10.0.0.1', '::ffff:169.254.169.254',
+    '0:0:0:0:0:ffff:c0a8:0101', '64:ff9b::10.0.0.1', '::127.0.0.1', 'fe80::1%eth0',
+    'not-an-ip', '1.2.3', '1.2.3.256',
+  ])('blocks %s', (ip) => {
+    expect(isBlockedAddress(ip)).toBe(true);
+  });
+
+  it.each([
+    '8.8.8.8', '1.1.1.1', '172.15.255.255', '172.32.0.1', '100.63.255.255', '100.128.0.1',
+    '169.253.1.1', '192.169.0.1', '11.0.0.1', '223.255.255.255',
+    '2606:4700:4700::1111', '2001:4860:4860::8888', '::ffff:8.8.8.8', '64:ff9b::8.8.8.8', 'fec0::1',
+  ])('allows public %s', (ip) => {
+    expect(isBlockedAddress(ip)).toBe(false);
+  });
+});
+
+describe('fetchBody SSRF guard (mocked fetch and DNS, no network)', () => {
+  const PAGE = `<html><body><article><p>${LEAD.repeat(10)}</p></article></body></html>`;
+  const html = () => new Response(PAGE, { status: 200, headers: { 'Content-Type': 'text/html' } });
+  const redirect = (to: string) => new Response(null, { status: 302, headers: { Location: to } });
+  const lookup: LookupAll = async (host) => [
+    { address: host === 'internal.example' ? '10.0.0.5' : '93.184.216.34', family: 4 },
+  ];
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function stubFetch(handler: (url: string) => Response) {
+    const fn = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => handler(String(input instanceof Request ? input.url : input)));
+    vi.stubGlobal('fetch', fn);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    return fn;
+  }
+
+  it('follows a redirect between public hosts, checking each hop by hand', async () => {
+    const fn = stubFetch((u) => (u.startsWith('https://a.example/') ? redirect('https://b.example/post') : html()));
+    const body = await fetchBody('https://a.example/x', 8000, { lookup });
+    expect(body).toContain('The newest entry sits at the top');
+    expect(fn).toHaveBeenCalledTimes(2);
+    expect(fn.mock.calls[0][1]).toMatchObject({ redirect: 'manual' });
+  });
+
+  it('refuses a redirect to a host that resolves to a private address', async () => {
+    const fn = stubFetch((u) => (u.startsWith('https://a.example/') ? redirect('http://internal.example/admin') : html()));
+    await expect(fetchBody('https://a.example/x', 8000, { lookup })).resolves.toBeNull();
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a redirect to a private IP literal and to a non-http scheme', async () => {
+    const meta = stubFetch((u) => (u.startsWith('https://a.example/') ? redirect('http://169.254.169.254/latest/meta-data') : html()));
+    await expect(fetchBody('https://a.example/x', 8000, { lookup })).resolves.toBeNull();
+    expect(meta).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+    const file = stubFetch((u) => (u.startsWith('https://a.example/') ? redirect('file:///etc/passwd') : html()));
+    await expect(fetchBody('https://a.example/x', 8000, { lookup })).resolves.toBeNull();
+    expect(file).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a host when any one of its addresses is private', async () => {
+    const fn = stubFetch(() => html());
+    const mixed: LookupAll = async () => [
+      { address: '93.184.216.34', family: 4 },
+      { address: '::1', family: 6 },
+    ];
+    await expect(fetchBody('https://a.example/x', 8000, { lookup: mixed })).resolves.toBeNull();
+    await expect(fetchBody('http://[::ffff:127.0.0.1]/x', 8000, { lookup })).resolves.toBeNull();
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('gives up after MAX_REDIRECTS hops', async () => {
+    let n = 0;
+    const fn = stubFetch(() => redirect(`https://a.example/${++n}`));
+    await expect(fetchBody('https://a.example/0', 8000, { lookup })).resolves.toBeNull();
+    expect(fn).toHaveBeenCalledTimes(MAX_REDIRECTS + 1);
   });
 });
