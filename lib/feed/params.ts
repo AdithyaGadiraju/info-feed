@@ -9,6 +9,7 @@
  * either.
  */
 import { isLane, type Lane } from '../db/types';
+import { feedDayOf, feedDayStart, feedToday, isCalendarDay } from './time';
 
 export const DEFAULT_MIN_SCORE = 4;
 /** Longer than any query a person types; keeps a pasted novel out of the ILIKE. */
@@ -55,55 +56,34 @@ export function parseDone(raw: string | null): boolean {
   return v === '1' || v === 'true';
 }
 
-const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-
 /**
  * `from` and `to` travel as calendar days, `YYYY-MM-DD`, because that is what a
  * person picks and what reads well in a link. A day is real only if it survives a
  * round trip through Date: `2026-02-30` rolls over to March and is rejected.
  */
 export function isDay(raw: string): boolean {
-  const m = DAY_RE.exec(raw);
-  if (!m) return false;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const date = localDate(y, mo - 1, d);
-  return date.getFullYear() === y && date.getMonth() === mo - 1 && date.getDate() === d;
+  return isCalendarDay(raw);
 }
 
-/**
- * `new Date(y, m, d)` reads a year below 100 as 19xx, and a date input being typed
- * passes through exactly those years (`0002-10-29`, `0020-10-29`), so the pieces
- * are set explicitly. Rolls over like Date does: month 12 or day 0 are fine.
- */
-function localDate(y: number, monthIndex: number, d: number): Date {
-  const date = new Date(0);
-  date.setFullYear(y, monthIndex, d);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-/** A Date as the local calendar day `YYYY-MM-DD`, the inverse of `dayStart`. */
+/** An instant as its feed (Sydney) calendar day `YYYY-MM-DD`, the inverse of `dayStart`. */
 export function formatDay(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(d.getFullYear()).padStart(4, '0')}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return feedDayOf(d);
 }
 
-/** Today in the process timezone. The page computes it once so the client and server agree on it. */
+/** Today in the feed's timezone (Sydney), whatever the server's or browser's zone. */
 export function today(): string {
-  return formatDay(new Date());
+  return feedToday();
 }
 
 /**
- * Local midnight at the start of `day`, plus `plusDays`. "Local" is the process
- * timezone (`TZ` in .env, the reader's own), which is also what the browser uses
- * to name today, so `from=today` means the same day on both ends. Postgres is not
- * asked to do this: the pooler session runs in UTC, so a bare `::date` cast there
- * would start the day eleven hours early.
+ * Sydney midnight at the start of `day`, plus `plusDays` (FEED_TIME_ZONE), the
+ * same zone the database groups days in and the page names today in, so
+ * `from=today` means the same day on every end. Postgres is not asked to do
+ * this: the pooler session runs in UTC, so a bare `::date` cast there would start
+ * the day eleven hours late.
  */
 export function dayStart(day: string, plusDays = 0): Date {
-  const m = DAY_RE.exec(day);
-  if (!m) throw new Error(`not a day: ${day}`);
-  return localDate(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + plusDays);
+  return feedDayStart(day, plusDays);
 }
 
 /** The inclusive `from`..`to` days as a half-open timestamp range for the query. */

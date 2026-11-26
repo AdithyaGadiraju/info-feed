@@ -3,6 +3,7 @@
  * scripts, tests). Next.js loads `.env` itself, so `dotenv` is a harmless no-op there.
  */
 import { config as loadDotenv } from 'dotenv';
+import { FEED_TIME_ZONE } from './feed/time';
 
 loadDotenv({ quiet: true });
 
@@ -31,8 +32,9 @@ export const env = {
   get databaseUrl(): string {
     return str('DATABASE_URL');
   },
+  /** The feed's day zone for the database and scheduler. Defaults to FEED_TIME_ZONE, the zone the web side uses. */
   get tz(): string {
-    return str('TZ', 'Australia/Sydney');
+    return str('TZ', FEED_TIME_ZONE);
   },
   get feedUser(): string | undefined {
     return opt('FEED_USER');

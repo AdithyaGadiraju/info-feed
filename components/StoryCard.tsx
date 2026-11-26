@@ -19,6 +19,7 @@ import {
   type Verification,
 } from '@/lib/db/types';
 import { eventCountdown, eventDaysLeft, eventIsSoon, formatEventDeadline, formatEventWhen } from '@/lib/events/format';
+import { FEED_TIME_ZONE } from '@/lib/feed/time';
 
 /**
  * JSON has no Date. Anything that arrives over `/api/feed` comes back with ISO
@@ -373,17 +374,18 @@ function Products({ products }: { products: ProductEntry[] }) {
 }
 
 /**
- * How near an event's deadline (or start) is, in the reader's own time zone. It
- * carries its words, so the amber of "soon" is never the only signal. The server
- * renders it in the server's zone, hence suppressHydrationWarning.
+ * How near an event's deadline (or start) is, counted in the feed's day (Sydney,
+ * FEED_TIME_ZONE) on both server and browser. It carries its words, so the amber
+ * of "soon" is never the only signal. The clock can still tick past midnight
+ * between server render and hydration, hence suppressHydrationWarning.
  */
 function EventCountdown({ event }: { event: EventFacts }) {
   const now = new Date();
-  const label = eventCountdown(event, now);
+  const label = eventCountdown(event, now, FEED_TIME_ZONE);
   if (!label) return null;
-  const left = eventDaysLeft(event, now) ?? 0;
+  const left = eventDaysLeft(event, now, FEED_TIME_ZONE) ?? 0;
   return (
-    <span className={`tag ${eventIsSoon(event, now) ? 'tag-amber' : ''}`} suppressHydrationWarning>
+    <span className={`tag ${eventIsSoon(event, now, FEED_TIME_ZONE) ? 'tag-amber' : ''}`} suppressHydrationWarning>
       <Icon name={left < 0 ? 'x' : 'clock'} size={14} />
       {label}
     </span>

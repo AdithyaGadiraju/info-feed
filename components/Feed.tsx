@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
 import StoryCard, { reviveStory, type WireStoryWithCount } from '@/components/StoryCard';
 import { ACTIVE_LANES, LANE_LABELS, PICKS_PER_DAY, type FeedCursor, type Lane, type StoryWithCount } from '@/lib/db/types';
-import { DEFAULT_MIN_SCORE, MAX_SEARCH_LENGTH, dayStart, formatDay, isDay } from '@/lib/feed/params';
+import { DEFAULT_MIN_SCORE, MAX_SEARCH_LENGTH, isDay } from '@/lib/feed/params';
+import { shiftDay } from '@/lib/feed/time';
 
 const PAGE_SIZE = 30;
 const SCORES = [1, 2, 3, 4, 5] as const;
@@ -74,11 +75,11 @@ const DATE_PRESETS = [
 /**
  * The calendar day `daysBack` days before `today`, as `YYYY-MM-DD`. `today` comes
  * from the server (FeedProps), not from `new Date()` here: a render-time clock
- * would make the server and the browser disagree across midnight or a timezone
- * and fail hydration on the checked chip.
+ * would make the server and the browser disagree across midnight and fail
+ * hydration on the checked chip.
  */
 function dayBefore(today: string, daysBack: number): string {
-  return formatDay(dayStart(today, -daysBack));
+  return shiftDay(today, -daysBack);
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -110,7 +111,7 @@ export interface FeedProps {
   initialStories: StoryWithCount[];
   initialCursor: FeedCursor | null;
   initialFilters: FeedFilters;
-  /** Today as `YYYY-MM-DD` in the server's timezone, which the date window is read in. */
+  /** Today as `YYYY-MM-DD` in the feed's timezone (Sydney), which the date window is read in. */
   today: string;
 }
 

@@ -57,25 +57,14 @@ describe('feed query-string parsers', () => {
     expect(isDay('')).toBe(false);
     // A date input being typed passes through these; Date(y, m, d) would read them as 19xx.
     expect(isDay('0002-10-29')).toBe(true);
-    expect(dayStart('0020-01-01').getFullYear()).toBe(20);
     expect(formatDay(dayStart('0020-01-01'))).toBe('0020-01-01');
     expect(formatDay(dayStart('2026-03-01', -1))).toBe('2026-02-28');
   });
 
-  it('turns a day into local midnight, in the process timezone', () => {
-    // vitest.config.ts pins TZ to Australia/Sydney; the test says so in the assertion
-    // rather than assuming it, so a changed config fails here with a clear message.
-    const start = dayStart('2026-10-29');
-    expect(start.getFullYear()).toBe(2026);
-    expect(start.getMonth()).toBe(9);
-    expect(start.getDate()).toBe(29);
-    expect(start.getHours()).toBe(0);
-    expect(start.getMinutes()).toBe(0);
-    expect(start.getTimezoneOffset()).toBe(new Date(2026, 9, 29).getTimezoneOffset());
-
-    const next = dayStart('2026-10-31', 1);
-    expect(next.getMonth()).toBe(10);
-    expect(next.getDate()).toBe(1);
+  it('turns a day into Sydney midnight, whatever the process timezone', () => {
+    // 29 Oct 2026 is in Sydney daylight time (+11:00).
+    expect(dayStart('2026-10-29').toISOString()).toBe('2026-10-28T13:00:00.000Z');
+    expect(dayStart('2026-10-31', 1).toISOString()).toBe('2026-10-31T13:00:00.000Z');
   });
 
   it('builds a half-open range from inclusive from and to days', () => {

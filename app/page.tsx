@@ -49,7 +49,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       q: filters.q,
       limit: 30,
     });
-    // `today` is named here, in the process timezone that dayRange() uses, so the
+    // `today` is named here, in the feed timezone (Sydney) that dayRange() uses, so the
     // date chips mean the same day on the server, in the browser and in the query.
     return (
       <Feed initialStories={page.stories} initialCursor={page.nextCursor} initialFilters={filters} today={today()} />
