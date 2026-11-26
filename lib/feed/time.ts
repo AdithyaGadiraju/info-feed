@@ -1,7 +1,7 @@
 /**
  * The feed's day is a Sydney day, everywhere: the server's date filters, the
  * "today" the page hands the browser, the day the database groups stories by
- * (`env.tz` defaults to this), and the event countdowns on the cards. The
+ * (TZ is not read for it), and the event countdowns on the cards. The
  * process or browser timezone never decides which day an instant falls on.
  *
  * Pure functions with no Next, database or env imports, so client components

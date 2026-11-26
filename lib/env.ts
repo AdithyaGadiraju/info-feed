@@ -32,7 +32,7 @@ export const env = {
   get databaseUrl(): string {
     return str('DATABASE_URL');
   },
-  /** The feed's day zone for the database and scheduler. Defaults to FEED_TIME_ZONE, the zone the web side uses. */
+  /** The worker's cron schedule zone only. Feed days (queries, filters, today) always use FEED_TIME_ZONE and ignore TZ. */
   get tz(): string {
     return str('TZ', FEED_TIME_ZONE);
   },

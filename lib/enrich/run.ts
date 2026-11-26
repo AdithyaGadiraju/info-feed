@@ -27,6 +27,7 @@ import {
   type TokenUsage,
 } from './transport';
 import { env } from '../env';
+import { FEED_TIME_ZONE } from '../feed/time';
 import { sourcesConfig } from '../../config/sources';
 import { applyScoreFloors } from './floors';
 
@@ -129,7 +130,7 @@ async function enrichChunk(
   const system = buildSystemPrompt();
   const followed = sourcesConfig.twitterUsers ?? [];
   // en-CA formats a date as YYYY-MM-DD.
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: env.tz }).format(new Date());
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: FEED_TIME_ZONE }).format(new Date());
   const user = buildUserPrompt(lane, stories, items, followed, today);
   const pendingIds = items.map((i) => i.id);
   const openIds = stories.map((s) => s.id);

@@ -8,7 +8,7 @@
 import type { Row, Sql } from 'postgres';
 import { db } from './client';
 import { DEFAULT_MIN_SCORE, searchPatterns } from '../feed/params';
-import { env } from '../env';
+import { FEED_TIME_ZONE } from '../feed/time';
 import {
   EXCLUDED_STORY_ID,
   isNewStoryAssignment,
@@ -614,7 +614,8 @@ export async function getFeedPage(opts: {
   const until = opts.until ?? null;
   const patterns = searchPatterns(opts.q ?? '');
   const picks = opts.picks ?? true;
-  const tz = env.tz;
+  // The feed's day is a Sydney day by owner ruling; TZ is deliberately not read here.
+  const tz = FEED_TIME_ZONE;
 
   const rows = await sql`
     WITH picks AS (
