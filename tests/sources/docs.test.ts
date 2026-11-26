@@ -47,6 +47,19 @@ describe('parseHtmlLinks', () => {
   });
 });
 
+describe('parseHtmlLinks with bad escapes', () => {
+  it('keeps going past a stray % in a slug and an out-of-range character reference', () => {
+    const html = `<a href="/blog/100%-off"><img src="x.png"></a>
+      <a href="/blog/odd">Odd &#99999999; title</a>
+      <a href="/blog/fine">Fine</a>`;
+    expect(parseHtmlLinks(html, 'https://example.com/blog')).toEqual([
+      { url: 'https://example.com/blog/100%-off', title: '100% off' },
+      { url: 'https://example.com/blog/odd', title: 'Odd &#99999999; title' },
+      { url: 'https://example.com/blog/fine', title: 'Fine' },
+    ]);
+  });
+});
+
 describe('matchesPrefix', () => {
   it('matches on the URL path only', () => {
     expect(matchesPrefix('https://cursor.com/blog/x', ['/blog/'])).toBe(true);

@@ -29,7 +29,7 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
       {/* Pre-expanded with the detail already in hand, so the page is complete
           HTML with JavaScript disabled. The story title is this page's h1. */}
       <StoryCard
-        story={{ ...story, itemCount: story.items.length, pick: false }}
+        story={{ ...story, itemCount: story.itemCount, pick: false }}
         initialDetail={story}
         defaultExpanded
         headingLevel={1}

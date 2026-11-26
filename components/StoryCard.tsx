@@ -72,7 +72,8 @@ export function reviveStoryWithItems(r: WireStoryWithItems): StoryWithItems {
 export function relativeTime(d: Date, now = Date.now()): string {
   const s = Math.round((now - d.getTime()) / 1000);
   if (s < 45) return 'just now';
-  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  // Capped so 3570-3599 s reads "59m ago", not "60m ago".
+  if (s < 3600) return `${Math.min(59, Math.round(s / 60))}m ago`;
   if (s < 86_400) return `${Math.floor(s / 3600)}h ago`;
   const days = Math.floor(s / 86_400);
   if (days < 7) return `${days}d ago`;
@@ -89,8 +90,11 @@ function hostOf(url: string): string | null {
   }
 }
 
-function compact(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
+export function compact(n: number): string {
+  if (n < 1000) return String(n);
+  // 9 950 rounds to "10k", not "10.0k"; 999 500 and up reads in millions, not "1000k".
+  const [v, unit] = n >= 999_500 ? [n / 1_000_000, 'M'] : [n / 1000, 'k'];
+  return `${v.toFixed(v >= 9.95 ? 0 : 1)}${unit}`;
 }
 
 function engagementLabel(e: Engagement): string | null {
@@ -546,7 +550,7 @@ export default function StoryCard({
     [toggleOnClick],
   );
 
-  const sourceCount = detail ? detail.items.length : story.itemCount;
+  const sourceCount = detail ? detail.itemCount : story.itemCount;
   const verification = story.verification;
   const outdated = isOutdated(story);
   // The collapsed card carries the note only when it is a warning. A confirmed

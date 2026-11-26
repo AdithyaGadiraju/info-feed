@@ -287,6 +287,8 @@ export const LANE_DAILY_CAP: Partial<Record<Lane, number>> = { ai: 3, games: 3, 
 
 /** A story plus its sources, for the expanded card and the permalink page. */
 export interface StoryWithItems extends StoryWithLink {
+  /** Every item behind the story; `items` holds only the newest 50. */
+  itemCount: number;
   items: Array<Pick<Item, 'id' | 'source' | 'url' | 'title' | 'author' | 'engagement' | 'publishedAt'>>;
 }
 

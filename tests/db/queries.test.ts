@@ -154,6 +154,7 @@ describe.skipIf(!hasDb)('db queries round trip', () => {
     `;
     const full = await getStoryWithItems(Number(story.id));
     expect(full?.items).toHaveLength(2);
+    expect(full?.itemCount).toBe(2);
     expect(full?.score).toBe(4);
 
     const [dropped] = await sql`SELECT story_id::int AS story_id FROM items WHERE id = ${noise}`;

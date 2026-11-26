@@ -232,6 +232,40 @@ describe('reddit entry mapping (fixture, no network)', () => {
     expect(item.body).toContain('/r/MachineLearning/comments/def/a_link_post/');
   });
 
+  it('decodes &amp; in the outbound link, so multi-parameter URLs are not broken', () => {
+    const entry: RedditEntry = {
+      ...ATOM_ENTRIES[1],
+      content: ATOM_ENTRIES[1].content!.replace(
+        '<a href="https://example.com/article">[link]',
+        '<a href="https://youtube.com/watch?v=abc&amp;t=30">[link]',
+      ),
+    };
+    const [item] = mapEntries([entry], spec, ctx);
+    expect(item.url).toBe('https://youtube.com/watch?v=abc&t=30');
+  });
+
+  it('cuts only the trailing footer, not the words "submitted by" in the post itself', () => {
+    const entry: RedditEntry = {
+      ...ATOM_ENTRIES[0],
+      content: ATOM_ENTRIES[0].content!.replace(
+        'Body text here.',
+        'This paper was submitted by our lab to NeurIPS. Details follow.',
+      ),
+    };
+    const [item] = mapEntries([entry], spec, ctx);
+    expect(item.body).toContain('submitted by our lab to NeurIPS. Details follow.');
+    expect(item.body).not.toContain('/u/someone');
+  });
+
+  it('decodes a literal "&lt;" in the post once, not twice', () => {
+    const entry: RedditEntry = {
+      ...ATOM_ENTRIES[0],
+      content: ATOM_ENTRIES[0].content!.replace('Body text here.', 'Write &amp;lt;div&amp;gt; as text.'),
+    };
+    const [item] = mapEntries([entry], spec, ctx);
+    expect(item.body).toContain('Write &lt;div&gt; as text.');
+  });
+
   it('never invents engagement numbers, because a fake count would corrupt the pre-filter', () => {
     const items = mapEntries(ATOM_ENTRIES.slice(0, 2), spec, ctx);
     expect(items.every((i) => Object.keys(i.engagement ?? {}).length === 0)).toBe(true);

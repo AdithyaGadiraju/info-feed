@@ -84,7 +84,7 @@ function isAccess(v: unknown): v is ProductAccess {
  * oversized full definition only that one. Duplicate names (ignoring case) keep
  * the first, and the list is trimmed to the cap.
  */
-export function sanitizeProducts(raw: unknown): ProductEntry[] {
+export function sanitizeProducts(raw: unknown, keep?: (p: ProductEntry) => boolean): ProductEntry[] {
   if (!Array.isArray(raw)) return [];
   const out: ProductEntry[] = [];
   const seen = new Set<string>();
@@ -110,6 +110,8 @@ export function sanitizeProducts(raw: unknown): ProductEntry[] {
     };
     const full = cleanFull(entry.full);
     if (full) product.full = full;
+    // Filtered before the cap counts it, so dropped names do not use up slots.
+    if (keep && !keep(product)) continue;
     out.push(product);
   }
   return out;
@@ -143,7 +145,7 @@ export function parseExplainResult(
     const haystack = text === undefined ? null : normalise(text);
     out.set(
       id,
-      sanitizeProducts(products).filter((p) => haystack === null || haystack.includes(normalise(p.name))),
+      sanitizeProducts(products, (p) => haystack === null || haystack.includes(normalise(p.name))),
     );
   }
   return out;

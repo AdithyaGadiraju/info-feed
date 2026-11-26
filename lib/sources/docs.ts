@@ -41,7 +41,7 @@ export function parseLlmsTxt(text: string): DocsPage[] {
 function titleFromSlug(url: string): string {
   const segments = new URL(url).pathname.split('/').filter(Boolean);
   const kept = segments.length > 1 ? segments.slice(1) : segments;
-  const slug = decodeURIComponent(kept.join(' ') || url).replace(/[-_]+/g, ' ').trim();
+  const slug = safeDecodeUri(kept.join(' ') || url).replace(/[-_]+/g, ' ').trim();
   return slug.charAt(0).toUpperCase() + slug.slice(1);
 }
 
@@ -59,10 +59,24 @@ export function parseSitemap(xml: string): DocsPage[] {
   return pages;
 }
 
+/** A stray `%` (`/blog/100%-off`) makes decodeURIComponent throw; keep such text as it is. */
+function safeDecodeUri(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
+/** An out-of-range reference (`&#99999999;`) makes fromCodePoint throw; keep it as written. */
+function fromCodePointOr(code: number, raw: string): string {
+  return code <= 0x10ffff ? String.fromCodePoint(code) : raw;
+}
+
 function decodeEntities(text: string): string {
   return text
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&#(\d+);/g, (raw, n) => fromCodePointOr(Number(n), raw))
+    .replace(/&#x([0-9a-f]+);/gi, (raw, n) => fromCodePointOr(parseInt(n, 16), raw))
     .replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'")
     .replace(/&lt;/g, '<')

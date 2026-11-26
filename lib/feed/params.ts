@@ -117,7 +117,8 @@ export function dayRange(from: string, to: string): { since: Date | null; until:
 /** `q=godot splats`: trimmed, inner whitespace collapsed, capped. Empty means no search. */
 export function parseSearch(raw: string | null): string {
   if (raw === null) return '';
-  return raw.replace(/\s+/g, ' ').trim().slice(0, MAX_SEARCH_LENGTH);
+  // The cap can split an emoji's surrogate pair; a lone half would match nothing.
+  return raw.replace(/\s+/g, ' ').trim().slice(0, MAX_SEARCH_LENGTH).replace(/[\uD800-\uDBFF]$/, '');
 }
 
 /**

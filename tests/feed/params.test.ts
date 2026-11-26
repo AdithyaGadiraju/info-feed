@@ -92,6 +92,9 @@ describe('feed query-string parsers', () => {
     expect(parseSearch(null)).toBe('');
     expect(parseSearch('  godot   splats \n')).toBe('godot splats');
     expect(parseSearch('x'.repeat(500))).toHaveLength(200);
+    // The cap must not leave half of an emoji, which would match nothing.
+    expect(parseSearch('a'.repeat(199) + '😀')).toBe('a'.repeat(199));
+    expect(parseSearch('a'.repeat(198) + '😀')).toBe('a'.repeat(198) + '😀');
   });
 
   it('makes one ILIKE pattern per word with the pattern characters escaped', () => {

@@ -307,6 +307,10 @@ describe('extractJsonObject', () => {
     expect(extractJsonObject(JSON.stringify(answer))).toEqual(answer);
   });
 
+  it('skips a brace in the prose that is not JSON and reads the answer after it', () => {
+    expect(extractJsonObject('Grouped by {lane}: ' + JSON.stringify(answer))).toEqual(answer);
+  });
+
   it('reads a fenced block', () => {
     expect(extractJsonObject('```json\n' + JSON.stringify(answer) + '\n```')).toEqual(answer);
   });

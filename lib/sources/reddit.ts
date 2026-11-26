@@ -104,24 +104,27 @@ export function blockMsAfter429(retryAfter: string | null, reset: string | null)
 function extractOutboundLink(contentHtml: string, permalink: string): string | undefined {
   const match = contentHtml.match(/<a href="([^"]+)">\[link\]<\/a>/);
   if (!match) return undefined;
-  const href = match[1];
+  // The href is HTML, so a query string arrives as `?v=abc&amp;t=30`.
+  const href = match[1].replace(/&amp;/g, '&');
   return href && href !== permalink ? href : undefined;
 }
 
 /** Strips tags and the "submitted by /u/x [link] [comments]" footer reddit appends. */
 function toPlainBody(contentHtml: string): string {
   const withoutFooter = contentHtml.replace(
-    /(&#32;\s*)?submitted by[\s\S]*$/i,
+    // The last "submitted by" only: the post's own text may say it too.
+    /(&#32;\s*)?submitted by(?![\s\S]*submitted by)[\s\S]*$/i,
     '',
   );
   const text = withoutFooter
     .replace(/<[^>]+>/g, ' ')
     .replace(/&#32;/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    // Last, so a literal "&lt;" in the post (sent as "&amp;lt;") is not decoded twice.
+    .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim();
   return text;

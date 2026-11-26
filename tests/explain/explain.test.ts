@@ -98,6 +98,13 @@ describe('parseExplainResult', () => {
     const out = parseExplainResult(parsed, [1], new Map([[1, 'Fujifilm LTO tape and   ETHGas news']]));
     expect(out.get(1)).toEqual([expect.objectContaining({ name: 'ETHGas', maker: null })]);
   });
+
+  it('applies the name filter before the cap, so dropped names do not crowd out a real one', () => {
+    const fakes = Array.from({ length: MAX_PRODUCTS }, (_, i) => ({ ...entry, name: `Absent${i}` }));
+    const parsed = { stories: [{ id: 1, products: [...fakes, entry] }] };
+    const out = parseExplainResult(parsed, [1], new Map([[1, 'ComfyUI is used']]));
+    expect(out.get(1)?.map((p) => p.name)).toEqual(['ComfyUI']);
+  });
 });
 
 describe('explain prompts', () => {

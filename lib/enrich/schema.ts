@@ -457,8 +457,9 @@ export function extractJsonObject(text: string): unknown {
     }
   }
 
-  const start = trimmed.indexOf('{');
-  if (start >= 0) {
+  // A brace in the prose before the answer ("grouped by {lane}") is not the
+  // answer, so a block that does not parse moves the scan on to the next brace.
+  scan: for (let start = trimmed.indexOf('{'); start >= 0; start = trimmed.indexOf('{', start + 1)) {
     let depth = 0;
     let inString = false;
     let escaped = false;
@@ -475,7 +476,11 @@ export function extractJsonObject(text: string): unknown {
       } else if (!inString && c === '}') {
         depth -= 1;
         if (depth === 0) {
-          return JSON.parse(trimmed.slice(start, i + 1));
+          try {
+            return JSON.parse(trimmed.slice(start, i + 1));
+          } catch {
+            continue scan;
+          }
         }
       }
     }

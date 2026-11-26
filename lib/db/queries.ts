@@ -815,7 +815,8 @@ export async function getStoryWithItems(id: number): Promise<StoryWithItems | nu
            first_seen_at, updated_at, digested_at, done_at,
            verdict, verdict_note, verdict_sources, verified_at,
            (SELECT i.url FROM items i WHERE i.story_id = stories.id
-             ORDER BY ${bestLinkFirst(sql)} LIMIT 1) AS primary_url
+             ORDER BY ${bestLinkFirst(sql)} LIMIT 1) AS primary_url,
+           (SELECT count(*)::int FROM items i WHERE i.story_id = stories.id) AS item_count
     FROM stories WHERE id = ${id}
   `;
   if (!row) return null;
@@ -829,6 +830,7 @@ export async function getStoryWithItems(id: number): Promise<StoryWithItems | nu
 
   return {
     ...toStoryWithLink(row),
+    itemCount: Number(row.item_count ?? 0),
     items: items.map((r) => ({
       id: Number(r.id),
       source: r.source as string,
